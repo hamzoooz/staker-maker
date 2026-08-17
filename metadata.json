@@ -1,0 +1,6 @@
+{
+  "name": "StickerMe AI",
+  "description": "Turn your selfie into personalized WhatsApp stickers with AI.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
