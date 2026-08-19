@@ -2,6 +2,7 @@ import { STICKER_EXPRESSIONS } from '../../src/data/constants.js';
 import { ExpressionId, GeneratedSticker, Order } from '../../src/types/index.js';
 import { db } from '../db.js';
 import { geminiService } from './gemini.js';
+import { openAIService } from './openai.js';
 import { imageProcessor } from './imageProcessor.js';
 import { whatsAppService } from './whatsapp.js';
 
@@ -9,12 +10,9 @@ export class JobQueue {
   private activeJobs = new Set<string>();
 
   /**
-   * Starts or resumes sticker generation job for a paid order.
-   * By default, stickers already marked 'completed' are left untouched (resume
-   * behavior). Pass `force: true` to regenerate every sticker from scratch,
-   * even ones already completed — used by the admin "Retry Generation" action.
+   * Starts or resumes sticker generation job for a paid order
    */
-  public async queueGeneration(orderId: string, options: { force?: boolean } = {}) {
+  public async queueGeneration(orderId: string) {
     if (this.activeJobs.has(orderId)) {
       console.log(`Job for order ${orderId} already in progress`);
       return;
@@ -36,7 +34,7 @@ export class JobQueue {
     // Run async in background without blocking HTTP response
     setImmediate(async () => {
       try {
-        await this.runGenerationPipeline(orderId, options.force || false);
+        await this.runGenerationPipeline(orderId);
       } catch (err: any) {
         console.error(`Fatal generation job error for ${orderId}:`, err);
         db.updateOrder(orderId, {
@@ -52,9 +50,12 @@ export class JobQueue {
   /**
    * Main generation pipeline
    */
-  private async runGenerationPipeline(orderId: string, force = false) {
+  private async runGenerationPipeline(orderId: string) {
     const order = db.getOrder(orderId);
     if (!order) return;
+
+    const settings = db.getSettings();
+    const useOpenAI = !!settings.openaiApiKey && settings.aiProvider !== 'gemini';
 
     // Step 1: Analyze selfie & create canonical character anchor
     db.updateOrder(orderId, {
@@ -62,10 +63,12 @@ export class JobQueue {
       generationProgress: { total: 12, completed: 0, currentExpression: 'Analyzing facial features...' },
     });
 
-    const canonicalAnchor = await geminiService.analyzeFaceAndCreateAnchor(
-      order.photoUrl,
-      order.style
-    );
+    let canonicalAnchor = '';
+    if (useOpenAI) {
+      canonicalAnchor = await openAIService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+    } else {
+      canonicalAnchor = await geminiService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+    }
 
     db.updateOrder(orderId, {
       generationStatus: 'creating_character',
@@ -97,11 +100,11 @@ export class JobQueue {
       generationStatus: 'generating_stickers',
     });
 
-    let completedCount = force ? 0 : stickers.filter(s => s.generationStatus === 'completed').length;
+    let completedCount = stickers.filter(s => s.generationStatus === 'completed').length;
 
     for (let i = 0; i < stickers.length; i++) {
       const sticker = stickers[i];
-      if (!force && sticker.generationStatus === 'completed') continue;
+      if (sticker.generationStatus === 'completed') continue;
 
       const expressionDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression) || STICKER_EXPRESSIONS[0];
 
@@ -117,53 +120,46 @@ export class JobQueue {
         generationStatus: 'generating',
       });
 
-      // Call Gemini for sticker image
-      const genResult = await geminiService.generateSticker({
+      const params = {
         orderId,
         photoUrl: order.photoUrl,
         styleId: order.style,
         expressionId: sticker.expression,
         expressionPrompt: expressionDef.actionPrompt,
         expressionName: expressionDef.name,
-        bubbleText: expressionDef.bubbleText,
+        bubbleText: sticker.bubbleText || expressionDef.bubbleText,
         canonicalCharacterPrompt: canonicalAnchor,
-      });
+      };
 
-      if (genResult.rawBase64) {
-        // Image Processing Step: Background cutout, sticker border, 512x512 canvas
-        const processed = await imageProcessor.processSticker(
-          genResult.rawBase64,
-          {
-            expressionName: expressionDef.name,
-            bubbleText: expressionDef.bubbleText,
-            addStickerBorder: true,
-          }
-        );
-
-        db.updateSticker(orderId, sticker.id, {
-          processedImageUrl: processed.publicUrl,
-          originalImageUrl: processed.publicUrl,
-          generationStatus: 'completed',
-        });
-        completedCount++;
+      // Call AI Engine (OpenAI or Gemini)
+      let genResult: any;
+      if (useOpenAI) {
+        genResult = await openAIService.generateSticker(params);
+        if (!genResult.success && !genResult.rawBase64) {
+          genResult = await geminiService.generateSticker(params);
+        }
       } else {
-        // No AI-generated image available (mock mode with no API key, or a temporary
-        // AI error): render a distinct stylized vector sticker per expression instead
-        // of reusing the raw uploaded selfie for every sticker in the pack.
-        const processed = await imageProcessor.processVectorSticker({
-          expressionName: expressionDef.name,
-          bubbleText: expressionDef.bubbleText,
-          styleId: order.style,
-        });
-
-        db.updateSticker(orderId, sticker.id, {
-          processedImageUrl: processed.publicUrl,
-          generationStatus: 'completed',
-          retryCount: genResult.success ? sticker.retryCount : sticker.retryCount + 1,
-        });
-        completedCount++;
+        genResult = await geminiService.generateSticker(params);
       }
 
+      // Step 4: Process into transparent 512x512 die-cut sticker
+      db.updateOrder(orderId, {
+        generationStatus: 'processing_images',
+      });
+
+      const processed = await imageProcessor.processSticker(genResult.rawBase64 || order.photoUrl, {
+        expressionName: expressionDef.name,
+        bubbleText: sticker.bubbleText || expressionDef.bubbleText,
+        addStickerBorder: true,
+      });
+
+      db.updateSticker(orderId, sticker.id, {
+        processedImageUrl: processed.publicUrl,
+        generationStatus: 'completed',
+        originalImageUrl: genResult.rawBase64 ? processed.publicUrl : undefined,
+      });
+
+      completedCount++;
       db.updateOrder(orderId, {
         generationProgress: {
           total: stickers.length,
@@ -172,84 +168,72 @@ export class JobQueue {
       });
     }
 
-    // Step 4: Packaging & Finalizing
+    // Step 5: Packaging and final delivery
     db.updateOrder(orderId, {
       generationStatus: 'packaging',
-      generationProgress: {
-        total: stickers.length,
-        completed: stickers.length,
-        currentExpression: 'Preparing your WhatsApp pack...',
-      },
     });
 
-    const updatedStickers = db.getStickers(orderId);
+    const finalStickers = db.getStickers(orderId);
 
-    // Step 5: Deliver to WhatsApp
-    db.updateOrder(orderId, {
-      deliveryStatus: 'sending',
-    });
+    // Optional WhatsApp automated delivery if phone is present
+    if (order.customerPhone && order.customerPhone.length > 5 && !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID)) {
+      db.updateOrder(orderId, {
+        deliveryStatus: 'sending',
+      });
 
-    const deliveryResult = await whatsAppService.deliverStickerPack(order, updatedStickers);
+      const delivery = await whatsAppService.deliverStickerPack(order, finalStickers);
+      db.updateOrder(orderId, {
+        deliveryStatus: delivery.success ? 'delivered' : 'failed',
+      });
+    } else {
+      // Direct Web / Link mode
+      db.updateOrder(orderId, {
+        deliveryStatus: 'delivered',
+      });
+    }
 
-    // Complete order
     db.updateOrder(orderId, {
       generationStatus: 'completed',
-      deliveryStatus: deliveryResult.success ? 'delivered' : 'failed',
-      generationProgress: {
-        total: stickers.length,
-        completed: stickers.length,
-        currentExpression: 'All stickers generated!',
-      },
+    });
+
+    db.addDeliveryEvent(orderId, {
+      id: `ev_${Date.now()}_complete`,
+      timestamp: new Date().toISOString(),
+      type: 'delivered',
+      message: 'All 12 AI stickers completed and ready for instant use!',
     });
   }
 
-  /**
-   * Retry single sticker generation without redoing all 12
-   */
   public async retrySingleSticker(orderId: string, stickerId: string) {
     const order = db.getOrder(orderId);
     if (!order) throw new Error('Order not found');
 
-    const stickers = db.getStickers(orderId);
-    const target = stickers.find(s => s.id === stickerId);
-    if (!target) throw new Error('Sticker not found');
+    const sticker = db.getStickers(orderId).find(s => s.id === stickerId);
+    if (!sticker) throw new Error('Sticker not found');
 
-    if (target.retryCount >= 3) {
-      throw new Error('Maximum retry attempts reached for this sticker');
-    }
+    const expressionDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression) || STICKER_EXPRESSIONS[0];
 
-    const expressionDef = STICKER_EXPRESSIONS.find(e => e.id === target.expression) || STICKER_EXPRESSIONS[0];
-
-    db.updateSticker(orderId, stickerId, {
-      generationStatus: 'generating',
-      retryCount: target.retryCount + 1,
-    });
-
-    const genResult = await geminiService.generateSticker({
+    const genResult = await openAIService.generateSticker({
       orderId,
       photoUrl: order.photoUrl,
       styleId: order.style,
-      expressionId: target.expression,
+      expressionId: sticker.expression,
       expressionPrompt: expressionDef.actionPrompt,
       expressionName: expressionDef.name,
-      bubbleText: expressionDef.bubbleText,
+      bubbleText: sticker.bubbleText || expressionDef.bubbleText,
+      canonicalCharacterPrompt: order.canonicalCharacterUrl,
     });
 
-    const processed = genResult.rawBase64
-      ? await imageProcessor.processSticker(genResult.rawBase64, {
-          expressionName: expressionDef.name,
-          bubbleText: expressionDef.bubbleText,
-          addStickerBorder: true,
-        })
-      : await imageProcessor.processVectorSticker({
-          expressionName: expressionDef.name,
-          bubbleText: expressionDef.bubbleText,
-          styleId: order.style,
-        });
+    const processed = await imageProcessor.processSticker(genResult.rawBase64 || order.photoUrl, {
+      expressionName: expressionDef.name,
+      bubbleText: sticker.bubbleText || expressionDef.bubbleText,
+      addStickerBorder: true,
+    });
 
-    db.updateSticker(orderId, stickerId, {
+    db.updateSticker(orderId, sticker.id, {
       processedImageUrl: processed.publicUrl,
       generationStatus: 'completed',
+      retryCount: (sticker.retryCount || 0) + 1,
     });
 
     return db.getStickers(orderId);

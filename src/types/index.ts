@@ -1,4 +1,4 @@
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'requires_action';
 
 export type GenerationStatus = 
   | 'queued' 
@@ -77,19 +77,23 @@ export interface GeneratedSticker {
 
 export interface Order {
   id: string;
-  customerPhone: string; // Normalized E.164 e.g. +97455123456
-  countryCode: string; // e.g. QA
-  rawPhone: string;
+  customerPhone?: string; // Optional phone
+  countryCode?: string; // e.g. QA
+  rawPhone?: string;
   photoUrl: string;
   canonicalCharacterUrl?: string;
   style: StickerStyleId;
   packageId: string;
   stickerCount: number;
-  price: number; // 2.99
+  basePrice: number; // 0.99
+  feePrice: number; // 0.20
+  price: number; // 1.19
   currency: string; // USD
   paymentStatus: PaymentStatus;
   paymentId?: string;
   paymentMethod?: string;
+  isAdminOrder?: boolean;
+  adminUser?: string;
   generationStatus: GenerationStatus;
   generationProgress: {
     total: number;
@@ -116,8 +120,8 @@ export interface DeliveryEvent {
 export interface CountryCodeItem {
   name: string;
   nameAr?: string;
-  code: string; // ISO 2
-  dialCode: string; // +974
+  code: string;
+  dialCode: string;
   flag: string;
   formatPlaceholder: string;
 }
@@ -126,8 +130,30 @@ export interface StickerPackage {
   id: string;
   name: string;
   stickersCount: number;
+  basePrice: number;
+  feePrice: number;
   price: number;
   currency: string;
   isPopular?: boolean;
   isActive: boolean;
+}
+
+export interface AdminUser {
+  email: string;
+  name: string;
+  token: string;
+  isAdmin: boolean;
+}
+
+export interface AppSettings {
+  openaiApiKey: string;
+  geminiApiKey: string;
+  basePrice: number;
+  gatewayFee: number;
+  currency: string;
+  zolnaPaySecretKey: string;
+  zolnaPayPublishableKey: string;
+  zolnaPayApiUrl: string;
+  systemPrompt: string;
+  aiProvider: 'openai' | 'gemini' | 'auto';
 }

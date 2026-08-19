@@ -1,21 +1,39 @@
 import fs from 'fs';
 import path from 'path';
-import { DeliveryEvent, GeneratedSticker, Order } from '../src/types/index.js';
+import crypto from 'crypto';
+import { AppSettings, DeliveryEvent, GeneratedSticker, Order } from '../src/types/index.js';
 
 interface DatabaseSchema {
   orders: Record<string, Order>;
   stickers: Record<string, GeneratedSticker[]>;
   deliveryLogs: Record<string, DeliveryEvent[]>;
+  settings: AppSettings;
+  adminTokens: Record<string, { email: string; name: string; expiresAt: number }>;
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+
+const DEFAULT_SETTINGS: AppSettings = {
+  openaiApiKey: process.env.OPENAI_API_KEY || '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',
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  basePrice: 0.99,
+  gatewayFee: 0.20,
+  currency: 'USD',
+  zolnaPaySecretKey: process.env.ZOLNAPAY_SECRET_KEY || 'sk_live_4Hm8uQSwQqTWP5oQS-zLU-DzF7ikPMJN',
+  zolnaPayPublishableKey: process.env.ZOLNAPAY_PUBLISHABLE_KEY || 'pk_live_oWwHVSDV7bw2pJTezt1G0jd6eXq5saGp',
+  zolnaPayApiUrl: process.env.ZOLNAPAY_API_URL || 'http://127.0.0.1:4000/v1',
+  systemPrompt: '',
+  aiProvider: 'openai',
+};
 
 class DatabaseStore {
   private data: DatabaseSchema = {
     orders: {},
     stickers: {},
     deliveryLogs: {},
+    settings: { ...DEFAULT_SETTINGS },
+    adminTokens: {},
   };
   private isLoaded = false;
 
@@ -30,10 +48,17 @@ class DatabaseStore {
       }
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        this.data = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        this.data = {
+          orders: parsed.orders || {},
+          stickers: parsed.stickers || {},
+          deliveryLogs: parsed.deliveryLogs || {},
+          settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+          adminTokens: parsed.adminTokens || {},
+        };
       }
     } catch (e) {
-      console.warn('Could not load database file, starting in-memory:', e);
+      console.warn('Could not load database file, starting fresh:', e);
     }
     this.isLoaded = true;
   }
@@ -47,6 +72,66 @@ class DatabaseStore {
     } catch (e) {
       console.error('Failed to persist database:', e);
     }
+  }
+
+  // Settings
+  public getSettings(): AppSettings {
+    return this.data.settings;
+  }
+
+  public updateSettings(updates: Partial<AppSettings>): AppSettings {
+    this.data.settings = {
+      ...this.data.settings,
+      ...updates,
+    };
+    this.save();
+    return this.data.settings;
+  }
+
+  // Admin Authentication
+  public validateAdminCredentials(username: string, pass: string): { email: string; name: string } | null {
+    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanPass = (pass || '').trim();
+
+    // Admin 1: Hamza
+    if ((cleanUser === 'hamzoooz123@gmail.com' || cleanUser === 'hamzoooz') && cleanPass === 'Hamza@2020') {
+      return { email: 'hamzoooz123@gmail.com', name: 'Hamza (Super Admin)' };
+    }
+
+    // Admin 2: Anwr
+    if (
+      (cleanUser === 'anwraltaher.com' || cleanUser === 'anwraltahir@gmail.com' || cleanUser === 'anwraltaher@gmail.com' || cleanUser === 'anwr') &&
+      cleanPass === 'Anwr@2020'
+    ) {
+      return { email: 'anwraltaher.com', name: 'Anwr Altahir (Admin)' };
+    }
+
+    // Fallback secret key auth
+    if (cleanPass === (process.env.ADMIN_SECRET_KEY || 'stickerai-admin-2025')) {
+      return { email: cleanUser || 'admin@stickerai.online', name: 'Platform Admin' };
+    }
+
+    return null;
+  }
+
+  public createAdminSession(email: string, name: string): string {
+    const token = `adm_${crypto.randomBytes(24).toString('hex')}`;
+    const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+    this.data.adminTokens[token] = { email, name, expiresAt };
+    this.save();
+    return token;
+  }
+
+  public verifyAdminToken(token?: string): { email: string; name: string } | null {
+    if (!token) return null;
+    const session = this.data.adminTokens[token];
+    if (!session) return null;
+    if (session.expiresAt < Date.now()) {
+      delete this.data.adminTokens[token];
+      this.save();
+      return null;
+    }
+    return { email: session.email, name: session.name };
   }
 
   // Orders
@@ -74,6 +159,17 @@ class DatabaseStore {
     this.data.orders[orderId] = updated;
     this.save();
     return updated;
+  }
+
+  public deleteOrder(orderId: string): boolean {
+    if (this.data.orders[orderId]) {
+      delete this.data.orders[orderId];
+      delete this.data.stickers[orderId];
+      delete this.data.deliveryLogs[orderId];
+      this.save();
+      return true;
+    }
+    return false;
   }
 
   public getAllOrders(): Order[] {

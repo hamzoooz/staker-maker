@@ -6,18 +6,34 @@ import { DemoShowcase } from './components/DemoShowcase.js';
 import { OrderForm } from './components/OrderForm.js';
 import { OrderStatusView } from './components/OrderStatusView.js';
 import { AdminDashboard } from './components/AdminDashboard.js';
+import { AdminLoginModal } from './components/AdminLoginModal.js';
 import { LegalModals, LegalModalType } from './components/LegalModals.js';
 import { Footer } from './components/Footer.js';
-import { Order, StickerStyleId } from './types/index.js';
+import { AdminUser, Order, StickerStyleId } from './types/index.js';
 
 export default function App() {
   const [lang, setLang] = useState<'en' | 'ar'>('en');
   const [selectedStyle, setSelectedStyle] = useState<StickerStyleId>('fun_expressive');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [legalModalType, setLegalModalType] = useState<LegalModalType>(null);
 
-  // Parse path or query for existing order id
+  // Check saved admin session on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('stickerai_admin_token');
+    const savedUser = localStorage.getItem('stickerai_admin_user');
+    if (savedToken && savedUser) {
+      try {
+        setAdminUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('stickerai_admin_user');
+      }
+    }
+  }, []);
+
+  // Parse path or query for existing order id or admin direct route
   useEffect(() => {
     const path = window.location.pathname;
     const urlParams = new URLSearchParams(window.location.search);
@@ -31,9 +47,30 @@ export default function App() {
     }
 
     if (path === '/admin' || urlParams.get('admin') === 'true') {
-      setIsAdminOpen(true);
+      const savedToken = localStorage.getItem('stickerai_admin_token');
+      if (savedToken) {
+        setIsAdminDashboardOpen(true);
+      } else {
+        setIsAdminLoginOpen(true);
+      }
     }
   }, []);
+
+  const handleAdminClick = () => {
+    const savedToken = localStorage.getItem('stickerai_admin_token');
+    if (savedToken && adminUser) {
+      setIsAdminDashboardOpen(true);
+    } else {
+      setIsAdminLoginOpen(true);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('stickerai_admin_token');
+    localStorage.removeItem('stickerai_admin_user');
+    setAdminUser(null);
+    setIsAdminDashboardOpen(false);
+  };
 
   // Update URL history when viewing order
   const handleOrderCreated = (order: Order, checkoutUrl?: string) => {
@@ -41,7 +78,6 @@ export default function App() {
     window.history.pushState({}, '', `/order/${order.id}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // If external checkout url provided and not mock, navigate
     if (checkoutUrl && !checkoutUrl.includes('mock_payment_id')) {
       window.location.href = checkoutUrl;
     }
@@ -74,10 +110,12 @@ export default function App() {
       {/* Navigation */}
       <Navbar
         onScrollToOrder={scrollToOrder}
-        onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenAdmin={handleAdminClick}
         onOpenPrivacy={() => setLegalModalType('privacy')}
         lang={lang}
         onToggleLang={toggleLanguage}
+        adminUser={adminUser}
+        onLogout={handleAdminLogout}
       />
 
       {/* Main View: Order Status vs Homepage */}
@@ -107,13 +145,14 @@ export default function App() {
             }}
           />
 
-          {/* Main Order Form (Upload -> Style -> Phone -> $2.99 Checkout) */}
+          {/* Main Order Form (Upload -> Style -> Phone Optional -> Checkout) */}
           <OrderForm
             lang={lang}
             selectedStyle={selectedStyle}
             onStyleChange={setSelectedStyle}
             onOrderCreated={handleOrderCreated}
             onOpenPrivacy={() => setLegalModalType('privacy')}
+            isAdmin={!!adminUser}
           />
         </main>
       )}
@@ -125,14 +164,26 @@ export default function App() {
         lang={lang}
       />
 
-      {/* Admin Dashboard Modal */}
-      {isAdminOpen && (
+      {/* Admin Login Modal */}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onLoginSuccess={(user) => {
+          setAdminUser(user);
+          setIsAdminDashboardOpen(true);
+        }}
+      />
+
+      {/* Super Admin Dashboard Modal */}
+      {isAdminDashboardOpen && (
         <AdminDashboard
-          onClose={() => setIsAdminOpen(false)}
+          adminUser={adminUser}
+          onClose={() => setIsAdminDashboardOpen(false)}
           onViewOrder={(orderId) => {
             setActiveOrderId(orderId);
             window.history.pushState({}, '', `/order/${orderId}`);
           }}
+          onLogout={handleAdminLogout}
         />
       )}
 

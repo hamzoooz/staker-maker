@@ -12,10 +12,14 @@ import {
   AlertCircle, 
   Lock, 
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Zap,
+  CreditCard,
+  Image as ImageIcon
 } from 'lucide-react';
 import { POPULAR_COUNTRIES, STICKER_PACKAGES, STICKER_STYLES } from '../data/constants.js';
 import { CountryCodeItem, Order, StickerStyleId } from '../types/index.js';
+import { CardPaymentModal } from './CardPaymentModal.js';
 
 interface OrderFormProps {
   lang: 'en' | 'ar';
@@ -23,6 +27,7 @@ interface OrderFormProps {
   onStyleChange: (styleId: StickerStyleId) => void;
   onOrderCreated: (order: Order, checkoutUrl?: string) => void;
   onOpenPrivacy: () => void;
+  isAdmin?: boolean;
 }
 
 export const OrderForm: React.FC<OrderFormProps> = ({
@@ -31,6 +36,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   onStyleChange,
   onOrderCreated,
   onOpenPrivacy,
+  isAdmin = false,
 }) => {
   // Photo state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -39,9 +45,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Phone state
-  const [selectedCountry, setSelectedCountry] = useState<CountryCodeItem>(POPULAR_COUNTRIES[0]); // Qatar by default
+  // Phone state (OPTIONAL)
+  const [selectedCountry, setSelectedCountry] = useState<CountryCodeItem>(POPULAR_COUNTRIES[0]);
   const [isCountryPickerOpen, setIsCountryPickerOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -50,12 +57,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   // Form submission state
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSimulatedCheckout, setIsSimulatedCheckout] = useState(true);
+  const [pendingCardOrder, setPendingCardOrder] = useState<Order | null>(null);
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
 
   // Camera stream ref
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
-  // Handle camera start
   const startCamera = async () => {
     setIsCameraActive(true);
     setErrorMessage(null);
@@ -71,7 +78,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     } catch (err: any) {
       console.warn('Camera access denied or unavailable:', err);
       setIsCameraActive(false);
-      setErrorMessage('Camera access was denied. Please select a photo from your gallery instead.');
+      // On mobile devices, fallback to native camera file input
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+      } else {
+        setErrorMessage(lang === 'en' ? 'Please select a photo from your gallery.' : 'يرجى اختيار صورة من ألبوم الصور.');
+      }
     }
   };
 
@@ -85,7 +97,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       setPhotoPreview(dataUrl);
-      setPhotoFile(null); // base64 preview is used
+      setPhotoFile(null);
     }
     stopCamera();
   };
@@ -104,16 +116,15 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     };
   }, []);
 
-  // Handle file selection
   const handleFile = (file: File) => {
     setErrorMessage(null);
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type.toLowerCase())) {
-      setErrorMessage('Please upload a JPG, JPEG, PNG, or WEBP image.');
+      setErrorMessage(lang === 'en' ? 'Please upload a JPG, JPEG, PNG, or WEBP image.' : 'يرجى رفع صورة بصيغة JPG أو PNG أو WEBP.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setErrorMessage('File size exceeds 10 MB limit. Please choose a smaller photo.');
+    if (file.size > 15 * 1024 * 1024) {
+      setErrorMessage(lang === 'en' ? 'File size exceeds 15 MB limit. Please choose a smaller photo.' : 'حجم الصورة يتجاوز 15 ميجابايت.');
       return;
     }
 
@@ -142,7 +153,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     }
   };
 
-  // Filtered countries
   const filteredCountries = POPULAR_COUNTRIES.filter(
     (c) =>
       c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
@@ -150,24 +160,22 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       (c.nameAr && c.nameAr.includes(countrySearch))
   );
 
-  // Validate phone
   const validatePhone = (): boolean => {
     const raw = phoneNumber.replace(/[^0-9]/g, '');
-    if (!raw || raw.length < 6) {
-      setPhoneError('Please enter your WhatsApp phone number.');
+    if (raw && raw.length < 5) {
+      setPhoneError(lang === 'en' ? 'Please enter a valid phone number or leave blank.' : 'يرجى إدخال رقم صحيح أو تركه فارغاً.');
       return false;
     }
     setPhoneError(null);
     return true;
   };
 
-  // Submit Order and Proceed to Checkout
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
     if (!photoPreview) {
-      setErrorMessage('Please upload or take a selfie photo before continuing.');
+      setErrorMessage(lang === 'en' ? 'Please upload or take a selfie photo before continuing.' : 'يرجى رفع أو التقاط صورة سيلفي أولاً.');
       return;
     }
 
@@ -179,8 +187,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
     try {
       const formData = new FormData();
-      formData.append('phone', `${selectedCountry.dialCode}${phoneNumber.replace(/[^0-9]/g, '')}`);
-      formData.append('countryCode', selectedCountry.code);
+      if (phoneNumber.trim()) {
+        formData.append('phone', `${selectedCountry.dialCode}${phoneNumber.replace(/[^0-9]/g, '')}`);
+        formData.append('countryCode', selectedCountry.code);
+      }
       formData.append('style', selectedStyle);
 
       if (photoFile) {
@@ -189,9 +199,16 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         formData.append('photoBase64', photoPreview);
       }
 
-      // Step 1: Create Order on Backend
+      // Check admin auth token
+      const adminToken = localStorage.getItem('stickerai_admin_token');
+      const headers: Record<string, string> = {};
+      if (adminToken) {
+        headers['Authorization'] = `Bearer ${adminToken}`;
+      }
+
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -202,17 +219,19 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
       const createdOrder: Order = orderData.order;
 
-      // Step 2: Initialize Checkout Session
-      const checkoutRes = await fetch(`/api/orders/${createdOrder.id}/checkout`, {
-        method: 'POST',
-      });
-
-      const checkoutData = await checkoutRes.json();
-      if (!checkoutRes.ok) {
-        throw new Error(checkoutData.error || 'Checkout initialization failed.');
+      // If created by Admin or free bypass
+      if (orderData.isAdminOrder || createdOrder.paymentStatus === 'paid') {
+        onOrderCreated(createdOrder);
+        return;
       }
 
-      onOrderCreated(createdOrder, checkoutData.checkoutUrl);
+      if (orderData.checkoutUrl) {
+        window.location.href = orderData.checkoutUrl;
+        return;
+      }
+
+      // Fallback
+      onOrderCreated(createdOrder, orderData.checkoutUrl);
     } catch (err: any) {
       console.error('Order submission failed:', err);
       setErrorMessage(err.message || 'Something went wrong while creating your order. Please try again.');
@@ -222,31 +241,53 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   };
 
   return (
-    <section id="order-section" className="py-16 bg-slate-50 border-t border-slate-200">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6">
+    <section id="order-section" className="py-10 sm:py-16 bg-slate-50 border-t border-slate-200">
+      <div className="max-w-4xl mx-auto px-3.5 sm:px-6">
         
         {/* Header */}
-        <div className="text-center max-w-xl mx-auto mb-10">
-          <div className="inline-flex items-center space-x-1.5 px-3.5 py-1 rounded-full bg-emerald-100/80 text-emerald-800 text-xs font-bold mb-3">
+        <div className="text-center max-w-xl mx-auto mb-8 sm:mb-10">
+          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100/90 text-emerald-900 text-[11px] sm:text-xs font-black mb-2.5">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Order Your 12 Stickers</span>
+            <span>{lang === 'en' ? 'AI Sticker Studio' : 'استوديو الملصقات الذكية'}</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            {lang === 'en' ? 'Create My Sticker Pack' : 'إنشاء حزمة ملصقاتي'}
+          <h2 className="text-2xl sm:text-4xl font-black text-slate-950 tracking-tight">
+            {lang === 'en' ? 'Create Your 12 Stickers' : 'اصنع حزمة الـ 12 ملصقاً الخاصة بك'}
           </h2>
-          <p className="text-sm sm:text-base text-slate-700 mt-2">
+          <p className="text-xs sm:text-sm text-slate-600 mt-1.5 font-medium">
             {lang === 'en'
-              ? 'Upload your photo, pick a style, and get 12 AI stickers sent directly to your WhatsApp for $2.99.'
-              : 'ارفع صورتك واختر النمط المناسب واستلم 12 ملصقاً مخصصاً على رقمك فوراً مقابل 2.99$.'}
+              ? 'Upload your photo, select a style, and receive your WhatsApp pack in seconds.'
+              : 'ارفع صورتك، اختر نمط الرسم، واحصل على حزمة ملصقاتك في ثوانٍ.'}
           </p>
         </div>
 
+        {/* Admin VIP Mode Alert */}
+        {isAdmin && (
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white flex items-center justify-between shadow-xl">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-purple-600/30 text-purple-300 flex items-center justify-center border border-purple-500/40">
+                <Zap className="w-4 h-4 text-amber-300" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">
+                  {lang === 'en' ? 'Admin VIP Mode Active' : 'وضع الأدمن المميز مفعّل'}
+                </h4>
+                <p className="text-xs text-slate-300">
+                  {lang === 'en' ? 'Unlimited Free Generations ($0.00)' : 'توليد غير محدود ومجاني 100%'}
+                </p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[11px] font-black border border-emerald-500/30">
+              FREE VIP
+            </span>
+          </div>
+        )}
+
         {/* Error Alert */}
         {errorMessage && (
-          <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-start space-x-3">
+          <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start space-x-3">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-semibold">{errorMessage}</p>
+              <p className="font-bold">{errorMessage}</p>
             </div>
             <button
               onClick={() => setErrorMessage(null)}
@@ -257,30 +298,45 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </div>
         )}
 
-        <form onSubmit={handleOrderSubmit} className="space-y-8">
+        <form onSubmit={handleOrderSubmit} className="space-y-6 sm:space-y-8">
           
           {/* STEP 1: UPLOAD PHOTO */}
-          <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-xs border border-slate-200 space-y-6">
+          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <span className="w-7 h-7 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
+              <div className="flex items-center space-x-2.5 sm:space-x-3">
+                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
                   1
                 </span>
                 <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                  <h3 className="text-sm sm:text-lg font-black text-slate-900">
                     {lang === 'en' ? 'Upload your selfie' : 'ارفع صورة سيلفي'}
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    {lang === 'en'
-                      ? 'Use a clear photo where your face is visible'
-                      : 'استخدم صورة واضحة ومضاءة يظهر فيها وجهك بوضوح'}
+                  <p className="text-[11px] sm:text-xs text-slate-500">
+                    {lang === 'en' ? 'Clear photo where your face is visible' : 'صورة واضحة يظهر فيها وجهك بوضوح'}
                   </p>
                 </div>
               </div>
-              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
-                JPG, PNG, WEBP (Max 10MB)
+              <span className="text-[10px] sm:text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
+                JPG, PNG
               </span>
             </div>
+
+            {/* Hidden native file inputs */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+              className="hidden"
+            />
 
             {/* Upload Area */}
             {!photoPreview && !isCameraActive && (
@@ -289,377 +345,270 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-12 text-center transition-all cursor-pointer flex flex-col items-center justify-center group ${
+                className={`relative border-2 border-dashed rounded-2xl sm:rounded-3xl p-6 sm:p-10 text-center transition-all cursor-pointer flex flex-col items-center justify-center group ${
                   isDragging
                     ? 'border-indigo-500 bg-indigo-50/50 scale-[0.99]'
                     : 'border-slate-300 hover:border-indigo-500 hover:bg-slate-50/50'
                 }`}
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/jpg"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFile(e.target.files[0]);
-                    }
-                  }}
-                />
-
-                <div className="w-14 h-14 rounded-2xl bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 flex items-center justify-center mb-4 transition-colors">
-                  <UploadCloud className="w-7 h-7" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
+                  <UploadCloud className="w-6 h-6 sm:w-7 sm:h-7" />
                 </div>
-
-                <p className="text-base font-bold text-slate-900 mb-1">
-                  {lang === 'en' ? 'Click to upload or drag and drop' : 'انقر لرفع الصورة أو اسحبها هنا'}
-                </p>
-                <p className="text-xs text-slate-500 max-w-sm mb-5">
-                  {lang === 'en'
-                    ? 'Take a photo or choose from your phone gallery'
-                    : 'التقط صورة جديدة أو اختر من معرض هاتفك'}
+                <h4 className="text-xs sm:text-base font-extrabold text-slate-900">
+                  {lang === 'en' ? 'Tap to choose photo from gallery' : 'اضغط لاختيار صورة من الألبوم'}
+                </h4>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                  {lang === 'en' ? 'Or drag and drop photo here' : 'أو اسحب وأفلت الصورة هنا'}
                 </p>
 
-                <div
-                  className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                {/* Camera Snap Button */}
+                <div className="mt-3.5 flex items-center space-x-2">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startCamera();
+                    }}
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer shadow-md"
                   >
-                    Choose From Gallery
-                  </button>
-                  <button
-                    type="button"
-                    onClick={startCamera}
-                    className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <Camera className="w-4 h-4" />
-                    <span>Take Photo</span>
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>{lang === 'en' ? 'Take Selfie Photo' : 'التقاط سيلفي مباشر'}</span>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Live Camera View */}
+            {/* Camera View */}
             {isCameraActive && (
-              <div className="relative rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center p-4">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm rounded-xl aspect-square object-cover" />
-                <div className="mt-4 flex items-center space-x-4">
-                  <button
-                    type="button"
-                    onClick={capturePhoto}
-                    className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md flex items-center space-x-2 cursor-pointer"
-                  >
-                    <Camera className="w-4 h-4" />
-                    <span>Capture Selfie</span>
-                  </button>
+              <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-950 aspect-square max-w-sm mx-auto flex flex-col items-center justify-center">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                <div className="absolute bottom-3 inset-x-3 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={stopCamera}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-sm font-semibold cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-slate-900/80 text-white text-xs font-bold backdrop-blur-xs"
                   >
                     Cancel
                   </button>
+                  <button
+                    type="button"
+                    onClick={capturePhoto}
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg"
+                  >
+                    Snap Photo
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* Photo Preview Mode */}
+            {/* Photo Preview */}
             {photoPreview && (
-              <div className="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-2xl bg-indigo-50/40 border border-indigo-200">
-                <div className="relative w-28 h-28 rounded-2xl overflow-hidden border-2 border-indigo-600 shadow-md shrink-0">
-                  <img src={photoPreview} alt="Selfie preview" className="w-full h-full object-cover" />
-                  <div className="absolute top-1 right-1 bg-indigo-600 text-white p-1 rounded-full">
-                    <Check className="w-3 h-3" />
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-2 text-center sm:text-left">
-                  <div className="flex items-center justify-center sm:justify-start space-x-2">
-                    <span className="font-bold text-slate-900 text-sm">Selfie ready for AI transformation!</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                      ✓ Valid
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600">
-                    We will generate 12 character expressions preserving your hair, eyes, and key facial identity.
-                  </p>
-                  <div className="pt-2 flex items-center justify-center sm:justify-start space-x-3">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-xs font-semibold text-slate-700 hover:text-slate-900 underline flex items-center space-x-1 cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                      Change Photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPhotoPreview(null);
-                        setPhotoFile(null);
-                      }}
-                      className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center space-x-1 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 mr-1" />
-                      Remove
-                    </button>
-                  </div>
+              <div className="relative rounded-2xl overflow-hidden bg-slate-100 max-w-xs mx-auto border border-slate-200 shadow-md">
+                <img src={photoPreview} alt="Selfie preview" className="w-full h-56 object-cover" />
+                <div className="absolute top-2.5 right-2.5 flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhotoPreview(null);
+                      setPhotoFile(null);
+                    }}
+                    className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-600 text-white backdrop-blur-xs transition-colors cursor-pointer"
+                    title="Remove Photo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
-
-            {/* Privacy note */}
-            <div className="pt-1 flex items-start space-x-2 text-[11px] text-slate-500">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              <span>
-                Your photo is used only to create your personalized stickers. We don't sell your photo or personal information. Automatically deleted in 7 days.{' '}
-                <button
-                  type="button"
-                  onClick={onOpenPrivacy}
-                  className="text-indigo-600 hover:underline font-semibold"
-                >
-                  Privacy Policy
-                </button>
-              </span>
-            </div>
           </div>
 
-          {/* STEP 2: CHOOSE STICKER STYLE */}
-          <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-xs border border-slate-200 space-y-6">
-            <div className="flex items-center space-x-3">
-              <span className="w-7 h-7 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
+          {/* STEP 2: CHOOSE ART STYLE */}
+          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
+            <div className="flex items-center space-x-2.5 sm:space-x-3">
+              <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
                 2
               </span>
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  {lang === 'en' ? 'Choose sticker style' : 'اختر نمط الملصقات'}
+                <h3 className="text-sm sm:text-lg font-black text-slate-900">
+                  {lang === 'en' ? 'Select Art Style' : 'اختر نمط الرسم'}
                 </h3>
-                <p className="text-xs text-slate-500">
-                  {lang === 'en'
-                    ? 'Pick an artistic look for your 12 stickers'
-                    : 'حدد المظهر الفني الذي تفضله لحزمة ملصقاتك'}
+                <p className="text-[11px] sm:text-xs text-slate-500">
+                  {lang === 'en' ? 'How should your cartoon character look?' : 'كيف تريد أن تظهر شخصيتك في الستيكرات؟'}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {STICKER_STYLES.map((style) => {
-                const isSelected = selectedStyle === style.id;
-                return (
-                  <div
-                    key={style.id}
-                    onClick={() => onStyleChange(style.id)}
-                    className={`relative rounded-2xl p-4 border transition-all cursor-pointer flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-600/30 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60'
-                    }`}
-                  >
-                    {style.badge && (
-                      <span className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-600 text-white">
-                        {style.badge}
-                      </span>
-                    )}
-                    <span className="text-3xl mb-2">{style.sampleEmoji}</span>
-                    <div>
-                      <h4 className="font-bold text-xs sm:text-sm text-slate-900">
-                        {lang === 'en' ? style.name : style.nameAr || style.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-1">
-                        {lang === 'en' ? style.description : style.descriptionAr || style.description}
-                      </p>
-                    </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+              {STICKER_STYLES.map((st) => (
+                <div
+                  key={st.id}
+                  onClick={() => onStyleChange(st.id)}
+                  className={`relative rounded-2xl p-3 sm:p-4 border-2 transition-all cursor-pointer flex flex-col justify-between active:scale-98 ${
+                    selectedStyle === st.id
+                      ? 'border-indigo-600 bg-indigo-50/60 shadow-md ring-2 ring-indigo-200'
+                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                  }`}
+                >
+                  <div>
+                    <span className="text-2xl sm:text-3xl mb-1.5 block">{st.sampleEmoji}</span>
+                    <h4 className="text-xs font-black text-slate-950">
+                      {lang === 'en' ? st.name : st.nameAr || st.name}
+                    </h4>
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 line-clamp-2">
+                      {lang === 'en' ? st.description : st.descriptionAr || st.description}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* STEP 3: WHATSAPP PHONE NUMBER */}
-          <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-xs border border-slate-200 space-y-6">
-            <div className="flex items-center space-x-3">
-              <span className="w-7 h-7 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
-                3
-              </span>
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  {lang === 'en' ? 'Enter your WhatsApp number' : 'أدخل رقم الواتساب'}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {lang === 'en'
-                    ? "We'll send your finished sticker pack to this WhatsApp number."
-                    : 'سنرسل حزمة الملصقات الجاهزة مباشرة إلى هذا الرقم على واتساب.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="flex flex-col sm:flex-row gap-2">
-                
-                {/* Country Selector Button */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsCountryPickerOpen(!isCountryPickerOpen)}
-                    className="w-full sm:w-52 px-3.5 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-between text-sm font-semibold text-slate-900 cursor-pointer shadow-2xs"
-                  >
-                    <div className="flex items-center space-x-2 truncate">
-                      <span className="text-lg">{selectedCountry.flag}</span>
-                      <span className="text-xs truncate">{selectedCountry.name}</span>
-                    </div>
-                    <span className="text-xs font-mono text-indigo-600 ml-1 shrink-0 font-bold">
-                      {selectedCountry.dialCode}
-                    </span>
-                  </button>
-
-                  {/* Country Dropdown Modal/List */}
-                  {isCountryPickerOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-200 z-50 p-2 space-y-1">
-                      <div className="sticky top-0 bg-white pb-2">
-                        <div className="relative">
-                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-3 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Search country or code..."
-                            value={countrySearch}
-                            onChange={(e) => setCountrySearch(e.target.value)}
-                            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-indigo-500"
-                          />
-                        </div>
-                      </div>
-                      {filteredCountries.map((country) => (
-                        <div
-                          key={country.code}
-                          onClick={() => {
-                            setSelectedCountry(country);
-                            setIsCountryPickerOpen(false);
-                            setCountrySearch('');
-                          }}
-                          className={`flex items-center justify-between p-2 rounded-xl text-xs hover:bg-indigo-50 cursor-pointer ${
-                            selectedCountry.code === country.code ? 'bg-indigo-50 font-bold' : ''
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2 truncate">
-                            <span className="text-base">{country.flag}</span>
-                            <span className="truncate">{country.name}</span>
-                          </div>
-                          <span className="text-indigo-600 font-mono font-semibold">{country.dialCode}</span>
-                        </div>
-                      ))}
+                  {selectedStyle === st.id && (
+                    <div className="mt-2 w-4.5 h-4.5 rounded-full bg-indigo-600 text-white flex items-center justify-center self-end">
+                      <Check className="w-3 h-3" />
                     </div>
                   )}
                 </div>
+              ))}
+            </div>
+          </div>
 
-                {/* Phone Input Field */}
-                <div className="flex-1 relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Phone className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => {
-                      setPhoneNumber(e.target.value);
-                      if (phoneError) setPhoneError(null);
-                    }}
-                    placeholder={`e.g. ${selectedCountry.formatPlaceholder}`}
-                    className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all ${
-                      phoneError ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300 bg-white'
-                    }`}
-                  />
+          {/* STEP 3: OPTIONAL WHATSAPP NUMBER */}
+          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 sm:space-x-3">
+                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
+                  3
+                </span>
+                <div>
+                  <h3 className="text-sm sm:text-lg font-black text-slate-900">
+                    {lang === 'en' ? 'WhatsApp Number (Optional)' : 'رقم الواتساب (اختياري)'}
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-500">
+                    {lang === 'en' ? 'Leave blank to view & download directly' : 'اتركه فارغاً لتنزيل الملصقات وإضافتها مباشرة'}
+                  </p>
                 </div>
-
               </div>
-
-              {phoneError && (
-                <p className="mt-1.5 text-xs font-semibold text-rose-600 flex items-center space-x-1">
-                  <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                  {phoneError}
-                </p>
-              )}
+              <span className="text-[10px] sm:text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
+                {lang === 'en' ? 'Optional' : 'اختياري'}
+              </span>
             </div>
 
-            <p className="text-[11px] text-slate-500">
-              Normalized format:{' '}
-              <span className="font-mono font-semibold text-slate-900">
-                {selectedCountry.dialCode}
-                {phoneNumber.replace(/[^0-9]/g, '') || 'XXXXXXXX'}
-              </span>
-            </p>
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+              {/* Country Picker */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsCountryPickerOpen(!isCountryPickerOpen)}
+                  className="w-full sm:w-48 px-3.5 py-3 rounded-xl border border-slate-300 bg-white flex items-center justify-between text-xs sm:text-sm font-bold text-slate-900 cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center space-x-2 truncate">
+                    <span className="text-base">{selectedCountry.flag}</span>
+                    <span className="truncate">{selectedCountry.name}</span>
+                  </div>
+                  <span className="font-mono text-indigo-600 font-bold ml-1 shrink-0">
+                    {selectedCountry.dialCode}
+                  </span>
+                </button>
+
+                {isCountryPickerOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 p-2 space-y-1">
+                    <div className="sticky top-0 bg-white pb-2">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-3 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search country..."
+                          value={countrySearch}
+                          onChange={(e) => setCountrySearch(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none"
+                        />
+                      </div>
+                    </div>
+                    {filteredCountries.map((c) => (
+                      <div
+                        key={c.code}
+                        onClick={() => {
+                          setSelectedCountry(c);
+                          setIsCountryPickerOpen(false);
+                        }}
+                        className="p-2 rounded-xl text-xs hover:bg-indigo-50 cursor-pointer flex items-center justify-between"
+                      >
+                        <span>{c.flag} {c.name}</span>
+                        <span className="font-mono text-indigo-600 font-bold">{c.dialCode}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Phone Input */}
+              <div className="flex-1 relative">
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder={selectedCountry.formatPlaceholder || '55 123 4567'}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {phoneError && (
+              <p className="text-xs text-rose-600 font-semibold">{phoneError}</p>
+            )}
           </div>
 
           {/* STEP 4: PACKAGE SUMMARY & CHECKOUT */}
-          <div className="bg-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl space-y-6 border border-slate-800">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-8 shadow-2xl space-y-5 sm:space-y-6 border border-slate-800">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
               <div>
-                <span className="text-xs font-bold text-indigo-400 tracking-wider uppercase">
-                  Starter Pack Included
+                <span className="text-[10px] sm:text-xs font-extrabold text-indigo-400 tracking-wider uppercase">
+                  Starter Pack
                 </span>
-                <h3 className="text-xl sm:text-2xl font-extrabold mt-1">12 AI-Generated WhatsApp Stickers</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Delivered straight to your WhatsApp • Lifetime access
+                <h3 className="text-lg sm:text-2xl font-black mt-0.5">12 Personalized AI Stickers</h3>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                  Instant Download & Direct 1-Click WhatsApp Pack Addition
                 </p>
               </div>
 
               <div className="text-left sm:text-right">
-                <span className="text-3xl font-extrabold text-white">$2.99</span>
-                <span className="text-xs text-slate-400 block">USD • One-time</span>
-              </div>
-            </div>
-
-            {/* Checkpoints */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-300">
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                  <Check className="w-3 h-3" />
+                <div className="flex items-baseline space-x-1">
+                  <span className="text-2xl sm:text-3xl font-black text-white">$0.99</span>
+                  <span className="text-[11px] text-slate-400">+ $0.20 fee</span>
                 </div>
-                <span>Facial Identity Preserved</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                  <Check className="w-3 h-3" />
-                </div>
-                <span>12 Unique Emotions & Memes</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                  <Check className="w-3 h-3" />
-                </div>
-                <span>No Account or Signup Required</span>
+                <span className="text-[10px] sm:text-[11px] text-emerald-400 block font-black">Total: $1.19 USD</span>
               </div>
             </div>
 
             {/* Submit CTA */}
-            <div className="pt-2">
+            <div>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-4 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-70 text-white font-extrabold text-base sm:text-lg shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-3 transition-all cursor-pointer"
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] disabled:opacity-70 text-white font-black text-sm sm:text-lg shadow-xl shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Preparing Secure Checkout...</span>
+                    <span>Preparing Pack...</span>
+                  </>
+                ) : isAdmin ? (
+                  <>
+                    <Zap className="w-5 h-5 text-amber-300" />
+                    <span>Generate 12 Stickers (Free Admin VIP)</span>
+                    <ArrowRight className="w-5 h-5" />
                   </>
                 ) : (
                   <>
-                    <Lock className="w-5 h-5" />
-                    <span>Pay $2.99 & Create My Stickers</span>
+                    <CreditCard className="w-5 h-5" />
+                    <span>Generate My 12 Stickers</span>
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
               </button>
 
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-slate-400">
-                <span className="whitespace-nowrap">🔒 256-bit Encrypted Checkout</span>
-                <span className="hidden sm:inline">•</span>
-                <span className="whitespace-nowrap">Instant Generation Trigger</span>
-                <span className="hidden sm:inline">•</span>
-                <span className="whitespace-nowrap">100% Satisfaction</span>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2.5 text-[10px] sm:text-[11px] text-slate-400">
+                <span>🔒 256-bit Encrypted</span>
+                <span>•</span>
+                <span>Direct WhatsApp Pack Addition</span>
+                <span>•</span>
+                <span>Instant Delivery</span>
               </div>
             </div>
 
@@ -668,6 +617,21 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         </form>
 
       </div>
+
+      {/* Card Payment Modal */}
+      {pendingCardOrder && (
+        <CardPaymentModal
+          isOpen={isCardModalOpen}
+          order={pendingCardOrder}
+          lang={lang}
+          onClose={() => setIsCardModalOpen(false)}
+          onPaymentSuccess={(updated) => {
+            setIsCardModalOpen(false);
+            onOrderCreated(updated);
+          }}
+        />
+      )}
+
     </section>
   );
 };

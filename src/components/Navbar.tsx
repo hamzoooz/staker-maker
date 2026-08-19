@@ -1,5 +1,6 @@
 import React from 'react';
-import { Sparkles, MessageCircle, Lock, ShieldCheck } from 'lucide-react';
+import { Sparkles, MessageCircle, Lock, ShieldCheck, Zap, LogOut } from 'lucide-react';
+import { AdminUser } from '../types/index.js';
 
 interface NavbarProps {
   onScrollToOrder: () => void;
@@ -7,6 +8,8 @@ interface NavbarProps {
   onOpenPrivacy: () => void;
   lang: 'en' | 'ar';
   onToggleLang: () => void;
+  adminUser?: AdminUser | null;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -14,68 +17,90 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAdmin,
   lang,
   onToggleLang,
+  adminUser,
+  onLogout,
 }) => {
   return (
-    <header className="sticky top-0 z-40 w-full bg-white border-b border-slate-200 shadow-xs transition-all">
-      <div className="max-w-6xl mx-auto px-3 sm:px-8 h-16 flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-lg border-b border-slate-200/80 shadow-2xs transition-all">
+      <div className="max-w-6xl mx-auto px-3.5 sm:px-8 h-15 sm:h-16 flex items-center justify-between">
+        
         {/* Brand Logo */}
-        <div
-          className="flex items-center gap-2 sm:gap-2.5 cursor-pointer min-w-0 shrink-0"
+        <div 
+          className="flex items-center gap-2 cursor-pointer select-none active:scale-95 transition-transform" 
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         >
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-xs shrink-0">
-            <div className="w-4 h-4 border-2 border-white rounded-full flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-full" />
-            </div>
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-tr from-indigo-600 via-indigo-700 to-emerald-500 rounded-xl flex items-center justify-center shadow-md shadow-indigo-600/20">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </div>
-          <div className="flex items-baseline gap-1.5 min-w-0">
-            <span className="font-bold text-base sm:text-xl tracking-tight text-slate-900 whitespace-nowrap">
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
+            <span className="font-black text-lg sm:text-xl tracking-tight text-slate-950">
               StickerMe<span className="text-indigo-600">AI</span>
-            </span>
-            <span className="hidden sm:inline-block text-[11px] font-semibold text-slate-400 whitespace-nowrap">
-              WhatsApp Pack
             </span>
           </div>
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-3 md:gap-5 text-sm font-medium text-slate-600 shrink-0">
-          {/* System Online / Ready status */}
-          <div className="hidden md:flex px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 items-center gap-2 text-xs font-semibold shrink-0">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span>AI Ready • $2.99</span>
-          </div>
+        <div className="flex items-center gap-2 sm:gap-3 text-sm font-medium">
+          
+          {/* Admin VIP Badge if logged in */}
+          {adminUser ? (
+            <div className="flex items-center space-x-1.5">
+              <button
+                onClick={onOpenAdmin}
+                className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-slate-900 text-purple-300 border border-purple-500/50 flex items-center space-x-1 text-[11px] sm:text-xs font-black shadow-md hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span className="truncate max-w-[80px] sm:max-w-none">{adminUser.name.split(' ')[0]}</span>
+              </button>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="hidden lg:flex px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200/80 items-center gap-1.5 text-[11px] font-bold">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <span>12 Custom Stickers</span>
+            </div>
+          )}
 
-          {/* Language switch */}
+          {/* Language Switch */}
           <button
             onClick={onToggleLang}
-            className="text-xs font-semibold px-2 py-1.5 sm:px-2.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0"
-            title="Toggle Language"
+            className="text-xs font-bold px-2 py-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer shadow-2xs"
+            title="Switch Language"
           >
-            {lang === 'en' ? 'العربية' : 'English'}
+            {lang === 'en' ? 'العربية' : 'EN'}
           </button>
 
-          {/* Admin link */}
-          <button
-            onClick={onOpenAdmin}
-            className="hidden sm:flex p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors shrink-0"
-            title="Admin Console"
-          >
-            <Lock className="w-4 h-4" />
-          </button>
+          {/* Discreet Admin Lock Button (Only when not logged in) */}
+          {!adminUser && (
+            <button
+              onClick={onOpenAdmin}
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Admin"
+            >
+              <Lock className="w-4 h-4" />
+            </button>
+          )}
 
-          {/* CTA Button */}
+          {/* Primary CTA */}
           <button
             onClick={onScrollToOrder}
-            className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-extrabold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 shadow-md shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer"
           >
-            <MessageCircle className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Create Stickers</span>
-            <span className="sm:hidden">Order</span>
+            <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>{lang === 'en' ? 'Create' : 'اصنع الآن'}</span>
           </button>
+
         </div>
+
       </div>
     </header>
   );
 };
-

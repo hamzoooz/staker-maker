@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+package-lock.json
+
+# Runtime data: order DB, and customer-uploaded photos / generated stickers.
+# Never commit real user data.
+/data/
+/public/assets/
