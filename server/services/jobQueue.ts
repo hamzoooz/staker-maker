@@ -9,9 +9,12 @@ export class JobQueue {
   private activeJobs = new Set<string>();
 
   /**
-   * Starts or resumes sticker generation job for a paid order
+   * Starts or resumes sticker generation job for a paid order.
+   * By default, stickers already marked 'completed' are left untouched (resume
+   * behavior). Pass `force: true` to regenerate every sticker from scratch,
+   * even ones already completed — used by the admin "Retry Generation" action.
    */
-  public async queueGeneration(orderId: string) {
+  public async queueGeneration(orderId: string, options: { force?: boolean } = {}) {
     if (this.activeJobs.has(orderId)) {
       console.log(`Job for order ${orderId} already in progress`);
       return;
@@ -33,7 +36,7 @@ export class JobQueue {
     // Run async in background without blocking HTTP response
     setImmediate(async () => {
       try {
-        await this.runGenerationPipeline(orderId);
+        await this.runGenerationPipeline(orderId, options.force || false);
       } catch (err: any) {
         console.error(`Fatal generation job error for ${orderId}:`, err);
         db.updateOrder(orderId, {
@@ -49,7 +52,7 @@ export class JobQueue {
   /**
    * Main generation pipeline
    */
-  private async runGenerationPipeline(orderId: string) {
+  private async runGenerationPipeline(orderId: string, force = false) {
     const order = db.getOrder(orderId);
     if (!order) return;
 
@@ -94,11 +97,11 @@ export class JobQueue {
       generationStatus: 'generating_stickers',
     });
 
-    let completedCount = stickers.filter(s => s.generationStatus === 'completed').length;
+    let completedCount = force ? 0 : stickers.filter(s => s.generationStatus === 'completed').length;
 
     for (let i = 0; i < stickers.length; i++) {
       const sticker = stickers[i];
-      if (sticker.generationStatus === 'completed') continue;
+      if (!force && sticker.generationStatus === 'completed') continue;
 
       const expressionDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression) || STICKER_EXPRESSIONS[0];
 

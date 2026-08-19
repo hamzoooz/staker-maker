@@ -308,7 +308,9 @@ async function startServer() {
         const stickers = await jobQueue.retrySingleSticker(order.id, stickerId);
         res.json({ success: true, stickers });
       } else {
-        jobQueue.queueGeneration(order.id);
+        // Admin "Retry Generation": force a full regenerate, including stickers
+        // already marked completed (e.g. to fix a previously botched pack).
+        jobQueue.queueGeneration(order.id, { force: true });
         res.json({ success: true, message: 'Generation job re-queued.' });
       }
     } catch (err: any) {
