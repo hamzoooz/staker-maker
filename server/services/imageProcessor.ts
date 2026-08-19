@@ -21,6 +21,7 @@ export class ImageProcessor {
       expressionName?: string;
       bubbleText?: string;
       addStickerBorder?: boolean;
+      styleId?: string;
     } = {}
   ): Promise<ProcessedStickerResult> {
     const { addStickerBorder = true, bubbleText } = options;
@@ -115,18 +116,31 @@ export class ImageProcessor {
       };
     } catch (err) {
       console.error('Image processing error, falling back:', err);
-      // If error occurs, create a high-quality stylized sticker directly
-      const fallbackCanvas = createCanvas(canvasSize, canvasSize);
-      const fCtx = fallbackCanvas.getContext('2d');
-      this.drawStylizedVectorSticker(fCtx, options.expressionName || 'Happy', bubbleText);
-      const buffer = fallbackCanvas.toBuffer('image/png');
-      const stored = await storageService.saveImage(buffer, 'stickers', 'png');
-      return {
-        publicUrl: stored.publicUrl,
-        width: canvasSize,
-        height: canvasSize,
-      };
+      return this.processVectorSticker({ expressionName: options.expressionName, bubbleText, styleId: options.styleId });
     }
+  }
+
+  /**
+   * Renders a distinct stylized vector sticker (no photo involved) — used when no
+   * AI-generated image is available (mock mode / generation error), so each of the
+   * 12 expressions still looks visually different instead of repeating the same asset.
+   */
+  public async processVectorSticker(options: {
+    expressionName?: string;
+    bubbleText?: string;
+    styleId?: string;
+  } = {}): Promise<ProcessedStickerResult> {
+    const canvasSize = 512;
+    const canvas = createCanvas(canvasSize, canvasSize);
+    const ctx = canvas.getContext('2d');
+    this.drawStylizedVectorSticker(ctx, options.expressionName || 'Happy', options.bubbleText, options.styleId);
+    const buffer = canvas.toBuffer('image/png');
+    const stored = await storageService.saveImage(buffer, 'stickers', 'png');
+    return {
+      publicUrl: stored.publicUrl,
+      width: canvasSize,
+      height: canvasSize,
+    };
   }
 
   /**
@@ -171,11 +185,25 @@ export class ImageProcessor {
     ctx.restore();
   }
 
+  private readonly STYLE_FACE_COLORS: Record<string, [string, string]> = {
+    cute: ['#FBCFE8', '#F9A8D4'],
+    '3d_character': ['#A5F3FC', '#67E8F9'],
+    anime: ['#DDD6FE', '#C4B5FD'],
+    professional: ['#CBD5E1', '#94A3B8'],
+    meme_style: ['#FDE68A', '#FCD34D'],
+    surprise_me: ['#99F6E4', '#5EEAD4'],
+    cartoon: ['#BFDBFE', '#93C5FD'],
+    fun_expressive: ['#FED7AA', '#FDBA74'],
+  };
+
   /**
-   * Generates a stylized sticker illustration (used for test mode or fallback)
+   * Generates a stylized sticker illustration (used for test mode or fallback).
+   * Face color reflects the chosen style, and eyes/mouth/props vary per expression
+   * so a full 12-pack looks visually distinct even without a real AI-generated image.
    */
-  public drawStylizedVectorSticker(ctx: any, expression: string, bubble?: string) {
+  public drawStylizedVectorSticker(ctx: any, expression: string, bubble?: string, styleId?: string) {
     const size = 512;
+    const e = expression.toLowerCase();
     ctx.clearRect(0, 0, size, size);
 
     // Outer sticker white die-cut background
@@ -189,10 +217,11 @@ export class ImageProcessor {
 
     ctx.shadowColor = 'transparent';
 
-    // Character face circle
+    // Character face circle, colored by the selected sticker style
+    const [colorTop, colorBottom] = this.STYLE_FACE_COLORS[styleId || ''] || this.STYLE_FACE_COLORS.fun_expressive;
     const faceGrad = ctx.createLinearGradient(size / 2, 80, size / 2, 400);
-    faceGrad.addColorStop(0, '#FED7AA');
-    faceGrad.addColorStop(1, '#FDBA74');
+    faceGrad.addColorStop(0, colorTop);
+    faceGrad.addColorStop(1, colorBottom);
     ctx.fillStyle = faceGrad;
     ctx.beginPath();
     ctx.arc(size / 2, size / 2 - 10, 165, 0, Math.PI * 2);
@@ -204,19 +233,44 @@ export class ImageProcessor {
     ctx.arc(size / 2, 180, 150, Math.PI * 1.05, Math.PI * 1.95);
     ctx.fill();
 
+    const eyesClosed = e.includes('laugh') || e.includes('sleepy') || e.includes('goodnight');
+
     // Eyes
     ctx.fillStyle = '#1E293B';
-    ctx.beginPath();
-    ctx.arc(size / 2 - 50, size / 2 - 25, 16, 0, Math.PI * 2);
-    ctx.arc(size / 2 + 50, size / 2 - 25, 16, 0, Math.PI * 2);
-    ctx.fill();
+    if (eyesClosed) {
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#1E293B';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(size / 2 - 50, size / 2 - 22, 14, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.arc(size / 2 + 50, size / 2 - 22, 14, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(size / 2 - 50, size / 2 - 25, 16, 0, Math.PI * 2);
+      ctx.arc(size / 2 + 50, size / 2 - 25, 16, 0, Math.PI * 2);
+      ctx.fill();
 
-    // Sparkle in eyes
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(size / 2 - 46, size / 2 - 30, 5, 0, Math.PI * 2);
-    ctx.arc(size / 2 + 54, size / 2 - 30, 5, 0, Math.PI * 2);
-    ctx.fill();
+      // Sparkle in eyes
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(size / 2 - 46, size / 2 - 30, 5, 0, Math.PI * 2);
+      ctx.arc(size / 2 + 54, size / 2 - 30, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Eyebrows for grumpy/angry expression
+    if (e.includes('angry') || e.includes('grumpy')) {
+      ctx.strokeStyle = '#1E293B';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(size / 2 - 66, size / 2 - 48);
+      ctx.lineTo(size / 2 - 34, size / 2 - 38);
+      ctx.moveTo(size / 2 + 66, size / 2 - 48);
+      ctx.lineTo(size / 2 + 34, size / 2 - 38);
+      ctx.stroke();
+    }
 
     // Cheeks
     ctx.fillStyle = 'rgba(244, 63, 94, 0.4)';
@@ -225,20 +279,52 @@ export class ImageProcessor {
     ctx.arc(size / 2 + 75, size / 2 + 10, 18, 0, Math.PI * 2);
     ctx.fill();
 
-    // Smile / Mouth based on expression
+    // Small tear for sad/pleading expression
+    if (e.includes('sad') || e.includes('pleading')) {
+      ctx.fillStyle = '#38BDF8';
+      ctx.beginPath();
+      ctx.moveTo(size / 2 + 58, size / 2 - 10);
+      ctx.quadraticCurveTo(size / 2 + 68, size / 2 + 12, size / 2 + 58, size / 2 + 20);
+      ctx.quadraticCurveTo(size / 2 + 48, size / 2 + 12, size / 2 + 58, size / 2 - 10);
+      ctx.fill();
+    }
+
+    // Mouth / smile, shaped per expression
     ctx.lineWidth = 8;
     ctx.strokeStyle = '#831843';
     ctx.lineCap = 'round';
     ctx.beginPath();
-    if (expression.toLowerCase().includes('laugh') || expression.toLowerCase().includes('happy')) {
+    if (e.includes('laugh') || e.includes('celebrat') || e.includes('party')) {
       ctx.arc(size / 2, size / 2 + 30, 40, 0.1 * Math.PI, 0.9 * Math.PI);
       ctx.fillStyle = '#E11D48';
       ctx.fill();
-    } else if (expression.toLowerCase().includes('surprised') || expression.toLowerCase().includes('shock')) {
+    } else if (e.includes('surprised') || e.includes('shock')) {
       ctx.arc(size / 2, size / 2 + 45, 25, 0, Math.PI * 2);
       ctx.fillStyle = '#831843';
       ctx.fill();
+    } else if (e.includes('love') || e.includes('heart')) {
+      ctx.moveTo(size / 2, size / 2 + 38);
+      ctx.bezierCurveTo(size / 2 - 26, size / 2 + 10, size / 2 - 10, size / 2 + 44, size / 2, size / 2 + 30);
+      ctx.bezierCurveTo(size / 2 + 10, size / 2 + 44, size / 2 + 26, size / 2 + 10, size / 2, size / 2 + 38);
+      ctx.fillStyle = '#E11D48';
+      ctx.fill();
+    } else if (e.includes('sad') || e.includes('pleading')) {
+      ctx.arc(size / 2, size / 2 + 55, 28, 1.1 * Math.PI, 1.9 * Math.PI);
+    } else if (e.includes('thinking') || e.includes('hmm')) {
+      ctx.arc(size / 2 + 8, size / 2 + 32, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#831843';
+      ctx.fill();
+    } else if (e.includes('sleepy') || e.includes('goodnight')) {
+      ctx.arc(size / 2, size / 2 + 30, 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#831843';
+      ctx.fill();
+    } else if (e.includes('angry') || e.includes('grumpy')) {
+      ctx.arc(size / 2, size / 2 + 50, 26, 1.15 * Math.PI, 1.85 * Math.PI);
+    } else if (e.includes('facepalm') || e.includes('smh')) {
+      ctx.moveTo(size / 2 - 22, size / 2 + 32);
+      ctx.lineTo(size / 2 + 22, size / 2 + 32);
     } else {
+      // thumbs_up, thank_you, and any remaining default expressions
       ctx.arc(size / 2, size / 2 + 25, 30, 0.15 * Math.PI, 0.85 * Math.PI);
     }
     ctx.stroke();

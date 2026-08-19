@@ -289,7 +289,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`relative border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition-all cursor-pointer flex flex-col items-center justify-center group ${
+                className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-12 text-center transition-all cursor-pointer flex flex-col items-center justify-center group ${
                   isDragging
                     ? 'border-indigo-500 bg-indigo-50/50 scale-[0.99]'
                     : 'border-slate-300 hover:border-indigo-500 hover:bg-slate-50/50'
@@ -320,18 +320,21 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                     : 'التقط صورة جديدة أو اختر من معرض هاتفك'}
                 </p>
 
-                <div className="flex items-center space-x-3" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap"
                   >
                     Choose From Gallery
                   </button>
                   <button
                     type="button"
                     onClick={startCamera}
-                    className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-all flex items-center space-x-1.5 cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <Camera className="w-4 h-4" />
                     <span>Take Photo</span>
@@ -651,12 +654,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 )}
               </button>
 
-              <div className="mt-3 flex items-center justify-center space-x-4 text-[11px] text-slate-400">
-                <span>🔒 256-bit Encrypted Checkout</span>
-                <span>•</span>
-                <span>Instant Generation Trigger</span>
-                <span>•</span>
-                <span>100% Satisfaction</span>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] text-slate-400">
+                <span className="whitespace-nowrap">🔒 256-bit Encrypted Checkout</span>
+                <span className="hidden sm:inline">•</span>
+                <span className="whitespace-nowrap">Instant Generation Trigger</span>
+                <span className="hidden sm:inline">•</span>
+                <span className="whitespace-nowrap">100% Satisfaction</span>
               </div>
             </div>
 

@@ -126,10 +126,10 @@ export class JobQueue {
         canonicalCharacterPrompt: canonicalAnchor,
       });
 
-      if (genResult.success) {
+      if (genResult.rawBase64) {
         // Image Processing Step: Background cutout, sticker border, 512x512 canvas
         const processed = await imageProcessor.processSticker(
-          genResult.rawBase64 || order.photoUrl,
+          genResult.rawBase64,
           {
             expressionName: expressionDef.name,
             bubbleText: expressionDef.bubbleText,
@@ -139,25 +139,24 @@ export class JobQueue {
 
         db.updateSticker(orderId, sticker.id, {
           processedImageUrl: processed.publicUrl,
-          originalImageUrl: genResult.rawBase64 ? processed.publicUrl : undefined,
+          originalImageUrl: processed.publicUrl,
           generationStatus: 'completed',
         });
         completedCount++;
       } else {
-        // Fallback to high-quality procedural vector sticker on temporary AI error
-        const processed = await imageProcessor.processSticker(
-          order.photoUrl,
-          {
-            expressionName: expressionDef.name,
-            bubbleText: expressionDef.bubbleText,
-            addStickerBorder: true,
-          }
-        );
+        // No AI-generated image available (mock mode with no API key, or a temporary
+        // AI error): render a distinct stylized vector sticker per expression instead
+        // of reusing the raw uploaded selfie for every sticker in the pack.
+        const processed = await imageProcessor.processVectorSticker({
+          expressionName: expressionDef.name,
+          bubbleText: expressionDef.bubbleText,
+          styleId: order.style,
+        });
 
         db.updateSticker(orderId, sticker.id, {
           processedImageUrl: processed.publicUrl,
           generationStatus: 'completed',
-          retryCount: sticker.retryCount + 1,
+          retryCount: genResult.success ? sticker.retryCount : sticker.retryCount + 1,
         });
         completedCount++;
       }
@@ -233,14 +232,17 @@ export class JobQueue {
       bubbleText: expressionDef.bubbleText,
     });
 
-    const processed = await imageProcessor.processSticker(
-      genResult.rawBase64 || order.photoUrl,
-      {
-        expressionName: expressionDef.name,
-        bubbleText: expressionDef.bubbleText,
-        addStickerBorder: true,
-      }
-    );
+    const processed = genResult.rawBase64
+      ? await imageProcessor.processSticker(genResult.rawBase64, {
+          expressionName: expressionDef.name,
+          bubbleText: expressionDef.bubbleText,
+          addStickerBorder: true,
+        })
+      : await imageProcessor.processVectorSticker({
+          expressionName: expressionDef.name,
+          bubbleText: expressionDef.bubbleText,
+          styleId: order.style,
+        });
 
     db.updateSticker(orderId, stickerId, {
       processedImageUrl: processed.publicUrl,
