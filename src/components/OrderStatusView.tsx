@@ -159,6 +159,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
 
   if (!order) return null;
 
+  const isPaid = order.paymentStatus === 'paid';
   const isCompleted = order.generationStatus === 'completed';
   const completedStickersCount = stickers.filter((s) => s.generationStatus === 'completed').length;
   const progressPercent = isCompleted
@@ -230,9 +231,31 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
           </div>
         </div>
 
+        {/* PAYMENT NOT YET CONFIRMED — show this instead of a misleading "generating" screen */}
+        {!isPaid && (
+          <div className="bg-amber-500/5 rounded-3xl p-5 sm:p-8 shadow-2xl border border-amber-500/30 space-y-4 backdrop-blur-md text-center">
+            <AlertCircle className="w-10 h-10 text-amber-400 mx-auto" />
+            <h2 className="text-xl sm:text-2xl font-extrabold text-white">
+              {lang === 'en' ? 'Payment Not Confirmed Yet' : 'لم يتم تأكيد الدفع بعد'}
+            </h2>
+            <p className="text-sm text-slate-400 max-w-md mx-auto">
+              {lang === 'en'
+                ? "We haven't received confirmation of your payment yet, so sticker generation hasn't started. This can happen if checkout was closed before finishing."
+                : 'لم نستلم تأكيد الدفع بعد، لذلك لم يبدأ توليد الملصقات. قد يحدث هذا إذا تم إغلاق صفحة الدفع قبل إتمامها.'}
+            </p>
+            <button
+              onClick={onBackToHome}
+              className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold transition-colors cursor-pointer"
+            >
+              <span>{lang === 'en' ? 'Start a New Order' : 'ابدأ طلبًا جديدًا'}</span>
+            </button>
+          </div>
+        )}
+
         {/* STATUS CARD */}
+        {isPaid && (
         <div className="bg-slate-900/40 rounded-3xl p-5 sm:p-8 shadow-2xl border border-slate-800/80 space-y-6 backdrop-blur-md">
-          
+
           {/* Header */}
           <div className="pb-6 border-b border-slate-800/60">
             <div className="flex items-center space-x-2">
@@ -310,6 +333,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
           </div>
 
         </div>
+        )}
 
         {/* STICKERS DISPLAY */}
         {stickers.length > 0 && (
