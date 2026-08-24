@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { STICKER_STYLES } from '../../src/data/constants.js';
 import { ExpressionId, StickerStyleId } from '../../src/types/index.js';
 import { storageService } from './storage.js';
@@ -160,10 +161,18 @@ Art style: ${styleObj.promptModifier}.
 Expression and pose: ${params.expressionPrompt} (${params.expressionName}).
 Sticker specifications: pure solid white background with clean thick white die-cut sticker outline contour, isolated subject centered, waist-up composition, bold readable shapes, vibrant colors, expressive facial emotion, zero background scenery, no watermarks, no unwanted text, high quality vector sticker.`;
 
-      const imageBuffer = Buffer.from(fileData.base64, 'base64');
+      // OpenAI's image-edit endpoint requires genuine PNG data. The uploaded
+      // selfie is usually JPEG — just relabeling the bytes "reference.png"
+      // without re-encoding causes "Invalid image file or mode" rejections.
+      const rawBuffer = Buffer.from(fileData.base64, 'base64');
+      const pngBuffer = await sharp(rawBuffer)
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .png()
+        .toBuffer();
+
       const form = new FormData();
       form.append('model', 'gpt-image-2');
-      form.append('image', new Blob([imageBuffer], { type: fileData.mimeType }), 'reference.png');
+      form.append('image', new Blob([pngBuffer], { type: 'image/png' }), 'reference.png');
       form.append('prompt', prompt);
       form.append('n', '1');
       form.append('size', '1024x1024');

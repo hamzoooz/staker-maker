@@ -254,6 +254,24 @@ export class JobQueue {
     });
 
     const finalStickers = db.getStickers(orderId);
+    const anySucceeded = finalStickers.some(s => s.generationStatus === 'completed');
+
+    if (!anySucceeded) {
+      // Every sticker failed — don't lie and say the order is "completed" and
+      // "delivered" when there's nothing to deliver. Surface it as a real failure.
+      db.updateOrder(orderId, {
+        generationStatus: 'failed',
+        deliveryStatus: 'failed',
+        error: finalStickers[0]?.error || 'All stickers failed to generate.',
+      });
+      db.addDeliveryEvent(orderId, {
+        id: `ev_${Date.now()}_allfailed`,
+        timestamp: new Date().toISOString(),
+        type: 'failed',
+        message: 'Sticker generation failed for this order. Please retry.',
+      });
+      return;
+    }
 
     // Optional WhatsApp automated delivery if phone is present
     if (order.customerPhone && order.customerPhone.length > 5 && !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID)) {
