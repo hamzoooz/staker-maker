@@ -166,6 +166,43 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
     }
   };
 
+  // Share all completed stickers at once via the native share sheet — this
+  // attaches the actual sticker files to WhatsApp, unlike the wa.me deep link
+  // below which can only pre-fill a text message with a URL, not media.
+  const handleShareAllStickersDirectly = async () => {
+    const completed = stickers.filter((s) => s.generationStatus === 'completed' && s.processedImageUrl);
+
+    try {
+      const files = await Promise.all(
+        completed.map(async (s, idx) => {
+          const targetUrl = s.webpUrl || s.processedImageUrl;
+          const isWebp = !!s.webpUrl || targetUrl.endsWith('.webp');
+          const res = await fetch(targetUrl);
+          const blob = await res.blob();
+          return new File([blob], `${idx + 1}_${s.expressionName.replace(/\s+/g, '_')}.${isWebp ? 'webp' : 'png'}`, {
+            type: isWebp ? 'image/webp' : 'image/png',
+          });
+        })
+      );
+
+      if (navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({
+          files,
+          title: 'WhatsApp Stickers - StickerAI',
+          text: `✨ صُنع بواسطة منصة stickerai.online`,
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn('Share-all error, falling back to chat link:', e);
+    }
+
+    // Fallback: open WhatsApp with the pack link if native multi-file share isn't supported.
+    if (whatsappLink) {
+      window.open(whatsappLink, '_blank');
+    }
+  };
+
   if (isLoading && !order) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
@@ -641,16 +678,14 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
                       </>
                     )}
                     
-                    {whatsappLink && (
-                      <a
-                        href={whatsappLink}
-                        target="_blank"
-                        rel="noreferrer"
+                    {(whatsappLink || completedStickersCount > 0) && (
+                      <button
+                        onClick={handleShareAllStickersDirectly}
                         className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
                       >
                         <MessageCircle className="w-4 h-4" />
-                        <span>{lang === 'en' ? 'Open in WhatsApp' : 'إرسال إلى محادثة واتساب'}</span>
-                      </a>
+                        <span>{lang === 'en' ? 'Send All to WhatsApp' : 'إرسال الكل إلى واتساب'}</span>
+                      </button>
                     )}
 
                     <button
@@ -677,8 +712,8 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
                     </h4>
                     <p className="text-xs text-slate-600 leading-relaxed">
                       {lang === 'en'
-                        ? '1. Tap "Open in WhatsApp" or download the .webp stickers • 2. In your WhatsApp chat, tap any sticker • 3. Choose "Add to Favorites ⭐" to permanently save it to your WhatsApp keyboard!'
-                        : '1. اضغط على زر "إرسال إلى محادثة واتساب" أو حمّل ملفات .webp • 2. داخل محادثة الواتساب اضغط على الستيكر • 3. اختر "إضافة إلى المفضلة ⭐" ليتم حفظه فوراً في لوحة ملصقات واتساب واستخدامه دائماً!'}
+                        ? '1. Tap "Send All to WhatsApp" and pick a chat • 2. In your WhatsApp chat, tap any sticker • 3. Choose "Add to Favorites ⭐" to permanently save it to your WhatsApp keyboard!'
+                        : '1. اضغط على زر "إرسال الكل إلى واتساب" واختر المحادثة • 2. داخل محادثة الواتساب اضغط على الستيكر • 3. اختر "إضافة إلى المفضلة ⭐" ليتم حفظه فوراً في لوحة ملصقات واتساب واستخدامه دائماً!'}
                     </p>
                   </div>
                 </div>
