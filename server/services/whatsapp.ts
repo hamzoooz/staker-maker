@@ -76,11 +76,15 @@ export class WhatsAppService implements IWhatsAppService {
 
         const messageId = data.messages?.[0]?.id || `wa_${Date.now()}`;
 
-        // 2. Dispatch the top preview sticker via WhatsApp Media API if available
-        if (completedStickers.length > 0 && completedStickers[0].processedImageUrl) {
-          const sampleStickerUrl = completedStickers[0].processedImageUrl.startsWith('http')
-            ? completedStickers[0].processedImageUrl
-            : `${baseUrl}${completedStickers[0].processedImageUrl}`;
+        // 2. Dispatch every completed sticker as an actual WhatsApp sticker message.
+        // WhatsApp requires the dedicated `sticker` message type (WebP media, no
+        // caption) — sending as `type: 'image'` delivers a regular photo instead
+        // of a sticker, so it never lands in the sticker tray.
+        for (const sticker of completedStickers) {
+          const mediaUrl = sticker.webpUrl || sticker.processedImageUrl;
+          if (!mediaUrl) continue;
+
+          const absoluteStickerUrl = mediaUrl.startsWith('http') ? mediaUrl : `${baseUrl}${mediaUrl}`;
 
           try {
             await fetch(
@@ -95,16 +99,15 @@ export class WhatsAppService implements IWhatsAppService {
                   messaging_product: 'whatsapp',
                   recipient_type: 'individual',
                   to: cleanPhone,
-                  type: 'image',
-                  image: {
-                    link: sampleStickerUrl,
-                    caption: `🌟 Preview of your 12 custom stickers!`,
+                  type: 'sticker',
+                  sticker: {
+                    link: absoluteStickerUrl,
                   },
                 }),
               }
             );
-          } catch (imgErr) {
-            console.warn('WhatsApp image preview send error (non-fatal):', imgErr);
+          } catch (stickerErr) {
+            console.warn(`WhatsApp sticker send error for ${sticker.id} (non-fatal):`, stickerErr);
           }
         }
 
