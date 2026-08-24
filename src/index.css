@@ -3,66 +3,9 @@
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #030014;
-    color: #f8fafc;
-    overflow-x: hidden;
   }
 }
 
 .font-arabic {
   font-family: 'Cairo', 'Plus Jakarta Sans', sans-serif;
 }
-
-/* AI Laser Scanning Animation */
-@keyframes scan-animation {
-  0% {
-    top: 0%;
-  }
-  50% {
-    top: 100%;
-  }
-  100% {
-    top: 0%;
-  }
-}
-
-.animate-scanner {
-  animation: scan-animation 2.5s infinite linear;
-}
-
-/* Custom glow borders & shadows */
-.neon-border-indigo {
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
-  border-color: rgba(99, 102, 241, 0.4);
-}
-
-.neon-border-emerald {
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
-  border-color: rgba(16, 185, 129, 0.4);
-}
-
-.neon-glow-purple {
-  filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.4));
-}
-
-.neon-glow-cyan {
-  filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.4));
-}
-
-/* AI Ambient Glow Backdrops */
-.ambient-purple {
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
-}
-
-.ambient-cyan {
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
-}
-
-/* Cybernetic grid overlay */
-.bg-grid-pattern {
-  background-size: 40px 40px;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-}
-
