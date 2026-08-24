@@ -503,16 +503,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* OpenAI Key Section */}
-              <div className="bg-slate-800/80 rounded-2xl p-4 sm:p-6 border border-slate-700/60 space-y-3.5">
-                <div className="flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <h3 className="text-sm sm:text-base font-black text-white">OpenAI Engine Key</h3>
+              {/* AI Engine & Keys Section */}
+              <div className="bg-slate-800/80 rounded-2xl p-4 sm:p-6 border border-slate-700/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm sm:text-base font-black text-white">AI Engine & API Keys</h3>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+                    Dual Provider Ready
+                  </span>
+                </div>
+
+                {/* Primary AI Provider Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                    Primary AI Engine Provider
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'openai', label: 'OpenAI (DALL-E 3)', icon: '⚡' },
+                      { id: 'gemini', label: 'Google (Imagen 3)', icon: '✨' },
+                      { id: 'auto', label: 'Auto (Best Match)', icon: '🪄' },
+                    ].map((prov) => (
+                      <button
+                        key={prov.id}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, aiProvider: prov.id })}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          settings.aiProvider === prov.id
+                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-md'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        <span>{prov.icon}</span>
+                        <span className="truncate">{prov.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    OpenAI API Key (DALL-E 3 & GPT-4o)
+                    OpenAI API Key (DALL-E 3 & GPT-4o Vision)
                   </label>
                   <div className="relative">
                     <input
@@ -534,7 +567,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Google Gemini API Key (Fallback)
+                    Google Gemini API Key (Imagen 3 & Gemini 2.5 Flash)
                   </label>
                   <div className="relative">
                     <input

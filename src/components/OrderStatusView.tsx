@@ -116,7 +116,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
     document.body.removeChild(a);
   };
 
-  // Batch download all completed stickers
+  // Batch download all completed stickers (PNG)
   const handleDownloadAll = () => {
     stickers
       .filter((s) => s.generationStatus === 'completed' && s.processedImageUrl)
@@ -125,6 +125,45 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
           handleDownloadSticker(s.processedImageUrl, `${idx + 1}_${s.expressionName}`);
         }, idx * 250);
       });
+  };
+
+  // Share actual sticker file directly to WhatsApp as native WebP sticker
+  const handleShareStickerDirectly = async (stickerUrl: string, name: string, webpUrl?: string) => {
+    const targetUrl = webpUrl || stickerUrl;
+    const isWebp = !!webpUrl || targetUrl.endsWith('.webp');
+    const mimeType = isWebp ? 'image/webp' : 'image/png';
+    const ext = isWebp ? 'webp' : 'png';
+
+    try {
+      const res = await fetch(targetUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `${name.replace(/\s+/g, '_')}.${ext}`, { type: mimeType });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'WhatsApp Sticker - StickerAI',
+          text: `✨ صُنع بواسطة منصة stickerai.online`,
+        });
+      } else {
+        // Fallback: Copy image to clipboard for direct pasting into WhatsApp Web / Desktop
+        try {
+          const pngRes = await fetch(stickerUrl);
+          const pngBlob = await pngRes.blob();
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'image/png': pngBlob,
+            }),
+          ]);
+          alert(lang === 'en' ? 'Sticker copied to clipboard! You can now paste it directly into WhatsApp!' : 'تم نسخ الملصق! يمكنك الآن لصقه مباشرة (Paste) في محادثة واتساب!');
+        } catch {
+          handleDownloadSticker(targetUrl, `${name}.${ext}`);
+        }
+      }
+    } catch (e) {
+      console.warn('Direct share error:', e);
+      handleDownloadSticker(targetUrl, `${name}.${ext}`);
+    }
   };
 
   if (isLoading && !order) {
@@ -162,7 +201,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
   const isPaid = order.paymentStatus === 'paid';
   const isCompleted = order.generationStatus === 'completed';
   const completedStickersCount = stickers.filter((s) => s.generationStatus === 'completed').length;
-  const progressPercent = Math.round((completedStickersCount / (order.stickerCount || 12)) * 100);
+  const progressPercent = isCompleted ? 100 : order.generationStatus === 'processing_images' || order.generationStatus === 'packaging' ? 80 : order.generationStatus === 'generating_stickers' ? 40 : order.generationStatus === 'creating_character' ? 20 : order.generationStatus === 'analyzing_photo' ? 10 : 0;
 
   const stages = [
     {
@@ -177,7 +216,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
       title: lang === 'en' ? 'Photo received' : 'استلام الصورة',
       isDone: isPaid,
       isActive: false,
-      note: lang === 'en' ? 'Selfie uploaded & sanitized' : 'تم رفع السيلفي ومعالجته',
+      note: lang === 'en' ? 'Selfie uploaded & face detected' : 'تم رفع السيلفي وقص الوجه',
     },
     {
       id: 'character',
@@ -188,17 +227,17 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
     },
     {
       id: 'stickers',
-      title: lang === 'en' ? `Generating stickers (${completedStickersCount}/${order.stickerCount || 12})` : `توليد الملصقات (${completedStickersCount}/${order.stickerCount || 12})`,
-      isDone: isCompleted || completedStickersCount >= (order.stickerCount || 12),
+      title: lang === 'en' ? 'Generating 12 stickers' : 'توليد ١٢ ملصقاً',
+      isDone: isCompleted || completedStickersCount >= 1,
       isActive: order.generationStatus === 'generating_stickers' || order.generationStatus === 'processing_images',
-      note: order.generationProgress?.currentExpression || (lang === 'en' ? 'Crafting 12 expressions' : 'رسم 12 تعبيراً مختلفاً'),
+      note: order.generationProgress?.currentExpression || (lang === 'en' ? 'Creating 12 unique expressions' : 'إنشاء ١٢ تعبيراً فريداً مخصصاً'),
     },
     {
       id: 'packaging',
-      title: lang === 'en' ? 'Preparing sticker pack' : 'تجهيز حزمة الملصقات',
+      title: lang === 'en' ? 'Preparing your stickers' : 'تجهيز ملصقاتك',
       isDone: isCompleted,
       isActive: order.generationStatus === 'packaging',
-      note: lang === 'en' ? '512x512 transparent PNG normalization' : 'أبعاد 512x512 وخلفية مفرغة',
+      note: lang === 'en' ? 'Converting and saving stickers' : 'تحسين وحفظ صيغ الملصقات',
     },
     {
       id: 'delivery',
@@ -262,9 +301,9 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
 
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">
                 {isCompleted
-                  ? (lang === 'en' ? '12 Stickers Created Successfully!' : 'تم إنشاء 12 ملصقاً بنجاح!')
+                  ? (lang === 'en' ? '12 AI Stickers Created Successfully!' : 'تم إنشاء الـ ١٢ ملصقاً بنجاح!')
                   : isPaid
-                  ? (lang === 'en' ? 'AI Sticker Generation in Progress' : 'جاري إنشاء ملصقاتك بالذكاء الاصطناعي...')
+                  ? (lang === 'en' ? '12 AI Stickers Generation in Progress' : 'جاري إنشاء الـ ١٢ ملصقاً بالذكاء الاصطناعي...')
                   : (lang === 'en' ? 'Complete Payment to Begin Generation' : 'أكمل الدفع لبدء إنشاء الملصقات')}
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 flex items-center space-x-2">
@@ -404,100 +443,286 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
 
         </div>
 
-        {/* COMPLETED STICKERS GRID */}
+        {/* COMPLETED STICKERS GRID / SHEET */}
         {isPaid && stickers.length > 0 && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-slate-200 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-extrabold text-slate-900">
-                  {lang === 'en' ? 'Your 12 Personalized Stickers' : 'حزمة الـ 12 ملصقاً الخاصة بك'}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {lang === 'en' 
-                    ? 'Preview, download individually, or save all directly to WhatsApp'
-                    : 'استعرض الملصقات وحمّلها فراداً أو احفظها جميعاً على هاتفك'}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {isCompleted && (
-                  <button
-                    onClick={handleDownloadAll}
-                    className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>{lang === 'en' ? 'Download All 12 Stickers (PNG)' : 'تحميل الـ 12 ملصقاً (PNG)'}</span>
-                  </button>
-                )}
-                
-                {whatsappLink && (
-                  <a
-                    href={whatsappLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>{lang === 'en' ? 'Add to WhatsApp Direct' : 'إضافة للواتساب مباشرة'}</span>
-                  </a>
-                )}
-
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    alert(lang === 'en' ? 'Pack link copied to clipboard!' : 'تم نسخ رابط حزمة الملصقات!');
-                  }}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <Share2 className="w-4 h-4 text-slate-600" />
-                  <span>{lang === 'en' ? 'Share Pack' : 'مشاركة الحزمة'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {stickers.map((stk, idx) => (
-                <div
-                  key={stk.id || idx}
-                  className="group relative bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col items-center justify-between hover:shadow-lg transition-all"
-                >
-                  <div className="w-full aspect-square relative rounded-xl overflow-hidden bg-white/80 flex items-center justify-center p-2">
-                    {stk.processedImageUrl ? (
-                      <img
-                        src={stk.processedImageUrl}
-                        alt={stk.expressionName}
-                        className="w-full h-full object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-200"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
-                        <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                        <span className="text-[10px] font-bold">Creating...</span>
+            
+            {/* Sheet View */}
+            {stickers.some(s => s.expression === 'sheet') ? (
+              (() => {
+                const sheetSticker = stickers.find(s => s.expression === 'sheet')!;
+                const isSheetCompleted = sheetSticker.generationStatus === 'completed' && sheetSticker.processedImageUrl;
+                return (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-xl font-extrabold text-slate-900">
+                          {lang === 'en' ? 'Your AI Expression Sticker Sheet' : 'لوحة الملصقات الذكية الخاصة بك'}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          {lang === 'en' 
+                            ? 'High-quality professional sticker sheet containing 24-30 reactions'
+                            : 'لوحة ملصقات احترافية عالية الجودة تحتوي على ٢٤-٣٠ تعبير مخصص'}
+                        </p>
                       </div>
-                    )}
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isSheetCompleted && (
+                          <>
+                            <a
+                              href={sheetSticker.processedImageUrl}
+                              download={`StickerAI_Sheet_${order.id}.png`}
+                              className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
+                            >
+                              <Download className="w-4 h-4" />
+                              <span>{lang === 'en' ? 'Download PNG' : 'تحميل صورة PNG'}</span>
+                            </a>
+
+                            {sheetSticker.webpUrl && (
+                              <a
+                                href={sheetSticker.webpUrl}
+                                download={`StickerAI_Sheet_${order.id}.webp`}
+                                className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
+                              >
+                                <Download className="w-4 h-4" />
+                                <span>{lang === 'en' ? 'Download WebP' : 'تحميل صورة WebP'}</span>
+                              </a>
+                            )}
+                          </>
+                        )}
+
+                        {/* Customer Regenerate Button */}
+                        {isCompleted && (
+                          <button
+                            onClick={async () => {
+                              setIsLoading(true);
+                              try {
+                                const res = await fetch(`/api/orders/${orderId}/retry`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({}), // Empty body triggers full order regeneration
+                                });
+                                if (!res.ok) throw new Error('Regeneration failed');
+                                fetchStatus();
+                              } catch (err: any) {
+                                setError(err.message);
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
+                            className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors cursor-pointer border border-slate-200"
+                          >
+                            <RefreshCw className="w-4 h-4 text-slate-600" />
+                            <span>{lang === 'en' ? 'Regenerate Sheet' : 'إعادة توليد اللوحة'}</span>
+                          </button>
+                        )}
+                        
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(window.location.href);
+                            alert(lang === 'en' ? 'Pack link copied to clipboard!' : 'تم نسخ رابط حزمة الملصقات!');
+                          }}
+                          className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors cursor-pointer border border-slate-200"
+                        >
+                          <Share2 className="w-4 h-4 text-slate-600" />
+                          <span>{lang === 'en' ? 'Share Pack' : 'مشاركة الحزمة'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* How to use */}
+                    <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 shadow-sm">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md">
+                        <MessageCircle className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <h4 className="text-sm font-extrabold text-slate-900">
+                          {lang === 'en' ? '⭐ WhatsApp Sticker Pack Use:' : '⭐ استخدام لوحة ملصقات واتساب:'}
+                        </h4>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {lang === 'en'
+                            ? 'Your face was automatically validated, cropped, and turned into this unified 24-30 expressions sticker sheet. Download the image to share with your friends, or upload it to your favorite sticker maker app!'
+                            : 'تم التحقق من صورتك وقص وجهك تلقائياً لتوليد هذه اللوحة الموحدة من ٢٤-٣٠ تعبيراً. حمّل الصورة لمشاركتها مع أصدقائك أو ارفعها في تطبيق الملصقات المفضل لديك!'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Main Sticker Sheet Preview */}
+                    <div className="w-full relative rounded-2xl border border-slate-200 bg-slate-100 overflow-hidden flex items-center justify-center p-2 shadow-xs group">
+                      {isSheetCompleted ? (
+                        <div className="relative w-full max-h-[600px] overflow-hidden flex items-center justify-center">
+                          <img
+                            src={sheetSticker.processedImageUrl}
+                            alt="Sticker Sheet"
+                            className="w-full max-h-[550px] object-contain rounded-xl shadow-lg hover:scale-[1.01] transition-transform duration-300"
+                          />
+                        </div>
+                      ) : (
+                        <div className="py-20 flex flex-col items-center justify-center text-slate-400 space-y-3">
+                          <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                          <span className="text-xs font-black">
+                            {lang === 'en' ? 'Generating your custom sticker sheet...' : 'جاري توليد لوحة ملصقاتك الخاصة...'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              /* Fallback Grid View for older orders */
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-extrabold text-slate-900">
+                      {lang === 'en' ? 'Your 12 Personalized Stickers' : 'حزمة الـ 12 ملصقاً الخاصة بك'}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {lang === 'en' 
+                        ? 'Preview, download individually, or save all directly to WhatsApp'
+                        : 'استعرض الملصقات وحمّلها فراداً أو احفظها جميعاً على هاتفك'}
+                    </p>
                   </div>
 
-                  <div className="w-full text-center mt-3">
-                    <span className="text-xs font-bold text-slate-900 block truncate">
-                      {stk.expressionName}
-                    </span>
-                    {stk.processedImageUrl && (
-                      <button
-                        onClick={() => handleDownloadSticker(stk.processedImageUrl!, stk.expressionName)}
-                        className="mt-2 text-[11px] text-indigo-600 hover:text-indigo-800 font-bold inline-flex items-center space-x-1"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Download</span>
-                      </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isCompleted && (
+                      <>
+                        <button
+                          onClick={() => {
+                            stickers
+                              .filter((s) => s.generationStatus === 'completed')
+                              .forEach((s, idx) => {
+                                setTimeout(() => {
+                                  const url = s.webpUrl || s.processedImageUrl;
+                                  const ext = s.webpUrl ? 'webp' : 'png';
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `WhatsApp_Sticker_${idx + 1}_${s.expressionName}.${ext}`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                }, idx * 200);
+                              });
+                          }}
+                          className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>{lang === 'en' ? 'Download WhatsApp Stickers (.webp)' : 'تحميل ملصقات واتساب (.webp)'}</span>
+                        </button>
+
+                        <button
+                          onClick={handleDownloadAll}
+                          className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>{lang === 'en' ? 'Download PNG' : 'تحميل صور PNG'}</span>
+                        </button>
+                      </>
                     )}
+                    
+                    {whatsappLink && (
+                      <a
+                        href={whatsappLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>{lang === 'en' ? 'Open in WhatsApp' : 'إرسال إلى محادثة واتساب'}</span>
+                      </a>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(window.location.href);
+                        alert(lang === 'en' ? 'Pack link copied to clipboard!' : 'تم نسخ رابط حزمة الملصقات!');
+                      }}
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4 text-slate-600" />
+                      <span>{lang === 'en' ? 'Share Pack' : 'مشاركة الحزمة'}</span>
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {/* Quick Guide: How to save to WhatsApp Keyboard */}
+                <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 shadow-sm">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md">
+                    <MessageCircle className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      {lang === 'en' ? '⭐ How to save to your WhatsApp Sticker Tray in 1 Tap:' : '⭐ كيفية إضافة الملصقات إلى لوحة ملصقات واتساب بنقرة واحدة:'}
+                    </h4>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      {lang === 'en'
+                        ? '1. Tap "Open in WhatsApp" or download the .webp stickers • 2. In your WhatsApp chat, tap any sticker • 3. Choose "Add to Favorites ⭐" to permanently save it to your WhatsApp keyboard!'
+                        : '1. اضغط على زر "إرسال إلى محادثة واتساب" أو حمّل ملفات .webp • 2. داخل محادثة الواتساب اضغط على الستيكر • 3. اختر "إضافة إلى المفضلة ⭐" ليتم حفظه فوراً في لوحة ملصقات واتساب واستخدامه دائماً!'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {stickers.map((stk, idx) => (
+                    <div
+                      key={stk.id || idx}
+                      className="group relative bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col items-center justify-between hover:shadow-lg transition-all"
+                    >
+                      <div className="w-full aspect-square relative rounded-xl overflow-hidden bg-white/80 flex items-center justify-center p-2">
+                        {stk.processedImageUrl ? (
+                          <img
+                            src={stk.processedImageUrl}
+                            alt={stk.expressionName}
+                            className="w-full h-full object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-200"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
+                            <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                            <span className="text-[10px] font-bold">Creating...</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="w-full text-center mt-3">
+                        <span className="text-xs font-bold text-slate-900 block truncate">
+                          {stk.expressionName}
+                        </span>
+                        {stk.processedImageUrl && (
+                          <div className="space-y-1.5 mt-2 w-full">
+                            <button
+                              onClick={() => handleShareStickerDirectly(stk.processedImageUrl!, stk.expressionName, stk.webpUrl)}
+                              className="w-full text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-1.5 px-2 rounded-lg flex items-center justify-center space-x-1 shadow-sm transition-all cursor-pointer"
+                            >
+                              <MessageCircle className="w-3 h-3" />
+                              <span>{lang === 'en' ? 'Send Sticker Directly' : 'إرسال كملصق مباشر'}</span>
+                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => handleDownloadSticker(stk.webpUrl || stk.processedImageUrl, `${stk.expressionName}.webp`)}
+                                className="flex-1 text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-1 px-1.5 rounded-md border border-emerald-200 inline-flex items-center justify-center space-x-1"
+                              >
+                                <Download className="w-2.5 h-2.5" />
+                                <span>WebP</span>
+                              </button>
+                              <button
+                                onClick={() => handleDownloadSticker(stk.processedImageUrl!, `${stk.expressionName}.png`)}
+                                className="flex-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1 px-1.5 rounded-md border border-slate-200 inline-flex items-center justify-center space-x-1"
+                              >
+                                <Download className="w-2.5 h-2.5" />
+                                <span>PNG</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
-
-      </div>
 
       {/* Direct Card Payment Modal */}
       <CardPaymentModal
@@ -512,5 +737,6 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
       />
 
     </div>
+  </div>
   );
 };

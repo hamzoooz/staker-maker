@@ -60,6 +60,48 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [pendingCardOrder, setPendingCardOrder] = useState<Order | null>(null);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
 
+  // Face validation states
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationSuccess, setValidationSuccess] = useState(false);
+
+  const validateUploadedImage = async (file: File | string) => {
+    setIsValidating(true);
+    setValidationSuccess(false);
+    setErrorMessage(null);
+    try {
+      const formData = new FormData();
+      if (typeof file === 'string') {
+        formData.append('photoBase64', file);
+      } else {
+        formData.append('photo', file);
+      }
+
+      const res = await fetch('/api/validate-image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || (lang === 'en' ? 'Face detection failed. Please upload a clear portrait.' : 'فشل التحقق من ملامح الوجه. يرجى رفع صورة شخصية واضحة.'));
+      }
+
+      if (data.croppedUrl) {
+        setPhotoPreview(data.croppedUrl);
+        setPhotoFile(null);
+      }
+      setValidationSuccess(true);
+    } catch (err: any) {
+      console.error('Validation failed:', err);
+      setErrorMessage(err.message || (lang === 'en' ? 'Face detection failed. Please upload a clear portrait.' : 'فشل التحقق من ملامح الوجه. يرجى رفع صورة شخصية واضحة.'));
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      setValidationSuccess(false);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
   // Camera stream ref
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
@@ -98,6 +140,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       setPhotoPreview(dataUrl);
       setPhotoFile(null);
+      validateUploadedImage(dataUrl);
     }
     stopCamera();
   };
@@ -132,6 +175,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       setPhotoPreview(e.target?.result as string);
+      validateUploadedImage(file);
     };
     reader.readAsDataURL(file);
   };
@@ -401,22 +445,72 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               </div>
             )}
 
-            {/* Photo Preview */}
-            {photoPreview && (
-              <div className="relative rounded-2xl overflow-hidden bg-slate-100 max-w-xs mx-auto border border-slate-200 shadow-md">
-                <img src={photoPreview} alt="Selfie preview" className="w-full h-56 object-cover" />
-                <div className="absolute top-2.5 right-2.5 flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPhotoPreview(null);
-                      setPhotoFile(null);
-                    }}
-                    className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-600 text-white backdrop-blur-xs transition-colors cursor-pointer"
-                    title="Remove Photo"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+            {/* Photo Validation Loading State */}
+            {isValidating && (
+              <div className="p-10 rounded-2xl bg-indigo-50/50 border border-indigo-200 text-center flex flex-col items-center justify-center space-y-3">
+                <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+                <h4 className="text-sm font-extrabold text-slate-900">
+                  {lang === 'en' ? 'Detecting face & validating photo...' : 'جاري التحقق من ملامح الوجه...'}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  {lang === 'en' ? 'This ensures your portrait is suitable for character generation.' : 'هذا يضمن أن الصورة الشخصية مناسبة لتوليد الستيكرات.'}
+                </p>
+              </div>
+            )}
+
+            {/* Photo Preview & Live Sticker Sample */}
+            {photoPreview && !isValidating && (
+              <div className="space-y-4 max-w-lg mx-auto">
+                <div className="relative rounded-3xl overflow-hidden bg-slate-100 border-2 border-indigo-500/40 shadow-lg">
+                  <img src={photoPreview} alt="Selfie preview" className="w-full h-56 object-cover" />
+                  <div className="absolute top-2.5 right-2.5 flex items-center space-x-2">
+                    <button
+                       type="button"
+                       onClick={() => {
+                         setPhotoPreview(null);
+                         setPhotoFile(null);
+                         setValidationSuccess(false);
+                       }}
+                       className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-600 text-white backdrop-blur-xs transition-colors cursor-pointer shadow-md"
+                       title="Remove Photo"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="absolute bottom-2.5 inset-x-2.5 bg-slate-950/80 backdrop-blur-md rounded-2xl p-2.5 text-white flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="font-bold text-[11px]">
+                        {lang === 'en' ? 'Photo Ready for Stickers' : 'تم اختيار الصورة وجاهزة لتوليد الملصقات'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      ✓ {lang === 'en' ? 'Verified Face' : 'تم التحقق من الوجه'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mini Preview Strip */}
+                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden bg-slate-900">
+                      <img src={photoPreview} alt="avatar" className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-indigo-950">
+                        {lang === 'en' ? 'Personalized Likeness' : 'تطبيق ملامحك على الستيكرات'}
+                      </p>
+                      <p className="text-[10px] text-indigo-700">
+                        {lang === 'en' ? 'Your detected face will be used to generate your custom stickers' : 'سيتم استخدام الوجه المستخلص لتوليد ملصقاتك المخصصة'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex -space-x-1.5 text-sm">
+                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">😍</span>
+                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">🤣</span>
+                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">🥳</span>
+                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">👍</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -561,9 +655,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 <span className="text-[10px] sm:text-xs font-extrabold text-indigo-400 tracking-wider uppercase">
                   Starter Pack
                 </span>
-                <h3 className="text-lg sm:text-2xl font-black mt-0.5">12 Personalized AI Stickers</h3>
+                <h3 className="text-lg sm:text-2xl font-black mt-0.5">
+                  {lang === 'en' ? 'Personalized AI Stickers Pack' : 'حزمة الملصقات الذكية المخصصة'}
+                </h3>
                 <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                  Instant Download & Direct 1-Click WhatsApp Pack Addition
+                  {lang === 'en' ? '12 Unique Expressions • High Quality Transparent Stickers' : '١٢ تعبيراً فريداً مخصصاً • ملصقات شفافة بجودة عالية'}
                 </p>
               </div>
 
@@ -580,24 +676,31 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             <div>
               <button
                 type="submit"
-                disabled={isLoading}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] disabled:opacity-70 text-white font-black text-sm sm:text-lg shadow-xl shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                disabled={isLoading || isValidating || !validationSuccess}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] disabled:opacity-75 text-white font-black text-sm sm:text-lg shadow-xl shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Preparing Pack...</span>
+                    <span>{lang === 'en' ? 'Generating My Stickers...' : 'جاري توليد ملصقاتي المخصصة...'}</span>
                   </>
+                ) : isValidating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{lang === 'en' ? 'Validating Photo...' : 'جاري التحقق من الصورة...'}</span>
+                  </>
+                ) : !validationSuccess ? (
+                  <span>{lang === 'en' ? 'Please upload a valid face photo' : 'يرجى رفع صورة وجه صالحة'}</span>
                 ) : isAdmin ? (
                   <>
                     <Zap className="w-5 h-5 text-amber-300" />
-                    <span>Generate 12 Stickers (Free Admin VIP)</span>
+                    <span>{lang === 'en' ? 'Generate 12 Stickers (Free Admin VIP)' : 'توليد ١٢ ملصقاً مخصصاً (مجاني للأدمن)'}</span>
                     <ArrowRight className="w-5 h-5" />
                   </>
                 ) : (
                   <>
                     <CreditCard className="w-5 h-5" />
-                    <span>Generate My 12 Stickers</span>
+                    <span>{lang === 'en' ? 'Generate My Stickers' : 'توليد ملصقاتي المخصصة'}</span>
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}

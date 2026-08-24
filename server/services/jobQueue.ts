@@ -10,9 +10,11 @@ export class JobQueue {
   private activeJobs = new Set<string>();
 
   /**
-   * Starts or resumes sticker generation job for a paid order
+   * Starts or resumes sticker generation job for a paid order.
+   * By default, stickers already marked 'completed' are left untouched (resume
+   * behavior). Pass `force: true` to regenerate every sticker from scratch.
    */
-  public async queueGeneration(orderId: string) {
+  public async queueGeneration(orderId: string, options: { force?: boolean } = {}) {
     if (this.activeJobs.has(orderId)) {
       console.log(`Job for order ${orderId} already in progress`);
       return;
@@ -34,7 +36,7 @@ export class JobQueue {
     // Run async in background without blocking HTTP response
     setImmediate(async () => {
       try {
-        await this.runGenerationPipeline(orderId);
+        await this.runGenerationPipeline(orderId, options.force || false);
       } catch (err: any) {
         console.error(`Fatal generation job error for ${orderId}:`, err);
         db.updateOrder(orderId, {
@@ -50,42 +52,48 @@ export class JobQueue {
   /**
    * Main generation pipeline
    */
-  private async runGenerationPipeline(orderId: string) {
+  private async runGenerationPipeline(orderId: string, force = false) {
     const order = db.getOrder(orderId);
     if (!order) return;
 
     const settings = db.getSettings();
-    const useOpenAI = !!settings.openaiApiKey && settings.aiProvider !== 'gemini';
+    const hasOpenAI = !!settings.openaiApiKey || !!process.env.OPENAI_API_KEY;
+    const hasGemini = !!settings.geminiApiKey || !!process.env.GEMINI_API_KEY;
+    const aiProvider = settings.aiProvider || (hasOpenAI ? 'openai' : hasGemini ? 'gemini' : 'auto');
 
     // Step 1: Analyze selfie & create canonical character anchor
     db.updateOrder(orderId, {
       generationStatus: 'analyzing_photo',
-      generationProgress: { total: 12, completed: 0, currentExpression: 'Analyzing facial features...' },
+      generationProgress: { total: 1, completed: 0, currentExpression: 'Analyzing facial features...' },
     });
 
     let canonicalAnchor = '';
-    if (useOpenAI) {
-      canonicalAnchor = await openAIService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
-    } else {
-      canonicalAnchor = await geminiService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+    try {
+      if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
+        canonicalAnchor = await openAIService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+      } else if (hasGemini) {
+        canonicalAnchor = await geminiService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+      }
+    } catch (anchorErr) {
+      console.warn('Face anchor creation error:', anchorErr);
     }
 
     db.updateOrder(orderId, {
       generationStatus: 'creating_character',
       canonicalCharacterUrl: order.photoUrl,
-      generationProgress: { total: 12, completed: 0, currentExpression: 'Crafting canonical character...' },
+      generationProgress: { total: 1, completed: 0, currentExpression: 'Analyzing face characteristics...' },
     });
 
-    // Step 2: Initialize or load sticker items
+    // Step 2: Initialize or load individual stickers
     let stickers = db.getStickers(orderId);
-    if (stickers.length === 0) {
-      stickers = STICKER_EXPRESSIONS.slice(0, order.stickerCount || 12).map((exp, idx) => ({
-        id: `stk_${orderId}_${exp.id}`,
+    if (stickers.length === 0 || force) {
+      stickers = STICKER_EXPRESSIONS.map((expr, idx) => ({
+        id: `stk_${orderId}_${expr.id}`,
         orderId,
         sequence: idx + 1,
-        expression: exp.id as ExpressionId,
-        expressionName: exp.name,
-        bubbleText: exp.bubbleText,
+        expression: expr.id,
+        expressionName: expr.name,
+        bubbleText: expr.bubbleText || '',
         processedImageUrl: '',
         generationStatus: 'pending',
         retryCount: 0,
@@ -95,24 +103,25 @@ export class JobQueue {
       db.saveStickers(orderId, stickers);
     }
 
-    // Step 3: Generate and process each sticker expression
+    // Step 3: Generate and process each sticker
     db.updateOrder(orderId, {
       generationStatus: 'generating_stickers',
     });
 
-    let completedCount = stickers.filter(s => s.generationStatus === 'completed').length;
+    const totalStickers = stickers.length;
+    let completedCount = 0;
 
-    for (let i = 0; i < stickers.length; i++) {
-      const sticker = stickers[i];
-      if (sticker.generationStatus === 'completed') continue;
-
-      const expressionDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression) || STICKER_EXPRESSIONS[0];
+    for (const sticker of stickers) {
+      if (sticker.generationStatus === 'completed' && !force) {
+        completedCount++;
+        continue;
+      }
 
       db.updateOrder(orderId, {
         generationProgress: {
-          total: stickers.length,
+          total: totalStickers,
           completed: completedCount,
-          currentExpression: `Generating ${expressionDef.name}...`,
+          currentExpression: `Generating ${sticker.expressionName} (${completedCount + 1}/${totalStickers})...`,
         },
       });
 
@@ -120,57 +129,142 @@ export class JobQueue {
         generationStatus: 'generating',
       });
 
-      const params = {
-        orderId,
-        photoUrl: order.photoUrl,
-        styleId: order.style,
-        expressionId: sticker.expression,
-        expressionPrompt: expressionDef.actionPrompt,
-        expressionName: expressionDef.name,
-        bubbleText: sticker.bubbleText || expressionDef.bubbleText,
-        canonicalCharacterPrompt: canonicalAnchor,
-      };
+      try {
+        let genResult: any = { success: false };
+        const exprDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression);
+        const actionPrompt = exprDef ? exprDef.actionPrompt : sticker.expressionName;
 
-      // Call AI Engine (OpenAI or Gemini)
-      let genResult: any;
-      if (useOpenAI) {
-        genResult = await openAIService.generateSticker(params);
-        if (!genResult.success && !genResult.rawBase64) {
-          genResult = await geminiService.generateSticker(params);
+        if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
+          genResult = await openAIService.generateSticker({
+            orderId,
+            photoUrl: order.photoUrl,
+            styleId: order.style,
+            expressionId: sticker.expression,
+            expressionPrompt: actionPrompt,
+            expressionName: sticker.expressionName,
+            bubbleText: sticker.bubbleText,
+            canonicalCharacterPrompt: canonicalAnchor,
+          });
+        } else if (hasGemini) {
+          genResult = await geminiService.generateSticker({
+            orderId,
+            photoUrl: order.photoUrl,
+            styleId: order.style,
+            expressionId: sticker.expression,
+            expressionPrompt: actionPrompt,
+            expressionName: sticker.expressionName,
+            bubbleText: sticker.bubbleText,
+            canonicalCharacterPrompt: canonicalAnchor,
+          });
         }
-      } else {
-        genResult = await geminiService.generateSticker(params);
+
+        if (!genResult.success) {
+          throw new Error(genResult.error || 'Failed to generate sticker.');
+        }
+
+        // Process into transparent WebP/PNG with border and emoji badges
+        db.updateOrder(orderId, {
+          generationProgress: {
+            total: totalStickers,
+            completed: completedCount,
+            currentExpression: `Processing and optimizing ${sticker.expressionName}...`,
+          },
+        });
+
+        const processed = await imageProcessor.processSticker(genResult.rawBase64, {
+          expressionId: sticker.expression,
+          expressionName: sticker.expressionName,
+          styleId: order.style,
+          bubbleText: sticker.bubbleText,
+          isAIGenerated: true,
+        });
+
+        db.updateSticker(orderId, sticker.id, {
+          processedImageUrl: processed.publicUrl,
+          webpUrl: processed.webpUrl,
+          generationStatus: 'completed',
+          originalImageUrl: processed.publicUrl,
+        });
+
+        completedCount++;
+        db.updateOrder(orderId, {
+          generationProgress: {
+            total: totalStickers,
+            completed: completedCount,
+            currentExpression: `Finished ${sticker.expressionName}!`,
+          },
+        });
+
+      } catch (err: any) {
+        console.error(`Failed to generate sticker ${sticker.expression}:`, err);
+        // Retry mechanism: if it fails, retry once immediately
+        try {
+          console.log(`Retrying sticker ${sticker.expression} once...`);
+          let genResult: any = { success: false };
+          const exprDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression);
+          const actionPrompt = exprDef ? exprDef.actionPrompt : sticker.expressionName;
+
+          if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
+            genResult = await openAIService.generateSticker({
+              orderId,
+              photoUrl: order.photoUrl,
+              styleId: order.style,
+              expressionId: sticker.expression,
+              expressionPrompt: actionPrompt,
+              expressionName: sticker.expressionName,
+              bubbleText: sticker.bubbleText,
+              canonicalCharacterPrompt: canonicalAnchor,
+            });
+          } else if (hasGemini) {
+            genResult = await geminiService.generateSticker({
+              orderId,
+              photoUrl: order.photoUrl,
+              styleId: order.style,
+              expressionId: sticker.expression,
+              expressionPrompt: actionPrompt,
+              expressionName: sticker.expressionName,
+              bubbleText: sticker.bubbleText,
+              canonicalCharacterPrompt: canonicalAnchor,
+            });
+          }
+
+          if (!genResult.success) {
+            throw new Error(genResult.error || 'Failed to generate sticker on retry.');
+          }
+
+          const processed = await imageProcessor.processSticker(genResult.rawBase64, {
+            expressionId: sticker.expression,
+            expressionName: sticker.expressionName,
+            styleId: order.style,
+            bubbleText: sticker.bubbleText,
+            isAIGenerated: true,
+          });
+
+          db.updateSticker(orderId, sticker.id, {
+            processedImageUrl: processed.publicUrl,
+            webpUrl: processed.webpUrl,
+            generationStatus: 'completed',
+            originalImageUrl: processed.publicUrl,
+          });
+
+          completedCount++;
+        } catch (retryErr: any) {
+          db.updateSticker(orderId, sticker.id, {
+            generationStatus: 'failed',
+            error: retryErr.message || 'Generation failed',
+          });
+        }
       }
-
-      // Step 4: Process into transparent 512x512 die-cut sticker
-      db.updateOrder(orderId, {
-        generationStatus: 'processing_images',
-      });
-
-      const processed = await imageProcessor.processSticker(genResult.rawBase64 || order.photoUrl, {
-        expressionName: expressionDef.name,
-        bubbleText: sticker.bubbleText || expressionDef.bubbleText,
-        addStickerBorder: true,
-      });
-
-      db.updateSticker(orderId, sticker.id, {
-        processedImageUrl: processed.publicUrl,
-        generationStatus: 'completed',
-        originalImageUrl: genResult.rawBase64 ? processed.publicUrl : undefined,
-      });
-
-      completedCount++;
-      db.updateOrder(orderId, {
-        generationProgress: {
-          total: stickers.length,
-          completed: completedCount,
-        },
-      });
     }
 
-    // Step 5: Packaging and final delivery
+    // Step 4: Packaging and final delivery
     db.updateOrder(orderId, {
       generationStatus: 'packaging',
+      generationProgress: {
+        total: totalStickers,
+        completed: completedCount,
+        currentExpression: 'Packaging finished!',
+      },
     });
 
     const finalStickers = db.getStickers(orderId);
@@ -186,7 +280,6 @@ export class JobQueue {
         deliveryStatus: delivery.success ? 'delivered' : 'failed',
       });
     } else {
-      // Direct Web / Link mode
       db.updateOrder(orderId, {
         deliveryStatus: 'delivered',
       });
@@ -200,7 +293,7 @@ export class JobQueue {
       id: `ev_${Date.now()}_complete`,
       timestamp: new Date().toISOString(),
       type: 'delivered',
-      message: 'All 12 AI stickers completed and ready for instant use!',
+      message: 'Your 12 personalized stickers have been generated successfully and are ready!',
     });
   }
 
@@ -211,32 +304,94 @@ export class JobQueue {
     const sticker = db.getStickers(orderId).find(s => s.id === stickerId);
     if (!sticker) throw new Error('Sticker not found');
 
-    const expressionDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression) || STICKER_EXPRESSIONS[0];
+    const settings = db.getSettings();
+    const hasOpenAI = !!settings.openaiApiKey || !!process.env.OPENAI_API_KEY;
+    const hasGemini = !!settings.geminiApiKey || !!process.env.GEMINI_API_KEY;
+    const aiProvider = settings.aiProvider || (hasOpenAI ? 'openai' : hasGemini ? 'gemini' : 'auto');
 
-    const genResult = await openAIService.generateSticker({
-      orderId,
-      photoUrl: order.photoUrl,
-      styleId: order.style,
-      expressionId: sticker.expression,
-      expressionPrompt: expressionDef.actionPrompt,
-      expressionName: expressionDef.name,
-      bubbleText: sticker.bubbleText || expressionDef.bubbleText,
-      canonicalCharacterPrompt: order.canonicalCharacterUrl,
+    db.updateOrder(orderId, {
+      generationStatus: 'generating_stickers',
+      generationProgress: {
+        total: 1,
+        completed: 0,
+        currentExpression: `Regenerating ${sticker.expressionName}...`,
+      },
     });
 
-    const processed = await imageProcessor.processSticker(genResult.rawBase64 || order.photoUrl, {
-      expressionName: expressionDef.name,
-      bubbleText: sticker.bubbleText || expressionDef.bubbleText,
-      addStickerBorder: true,
+    db.updateSticker(orderId, sticker.id, {
+      generationStatus: 'generating',
+    });
+
+    let canonicalAnchor = order.photoUrl; // fallback
+    try {
+      if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
+        canonicalAnchor = await openAIService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+      } else if (hasGemini) {
+        canonicalAnchor = await geminiService.analyzeFaceAndCreateAnchor(order.photoUrl, order.style);
+      }
+    } catch (anchorErr) {
+      console.warn('Face anchor creation error on retry:', anchorErr);
+    }
+
+    let genResult: any = { success: false };
+    const exprDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression);
+    const actionPrompt = exprDef ? exprDef.actionPrompt : sticker.expressionName;
+
+    if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
+      genResult = await openAIService.generateSticker({
+        orderId,
+        photoUrl: order.photoUrl,
+        styleId: order.style,
+        expressionId: sticker.expression,
+        expressionPrompt: actionPrompt,
+        expressionName: sticker.expressionName,
+        bubbleText: sticker.bubbleText,
+        canonicalCharacterPrompt: canonicalAnchor,
+      });
+    } else if (hasGemini) {
+      genResult = await geminiService.generateSticker({
+        orderId,
+        photoUrl: order.photoUrl,
+        styleId: order.style,
+        expressionId: sticker.expression,
+        expressionPrompt: actionPrompt,
+        expressionName: sticker.expressionName,
+        bubbleText: sticker.bubbleText,
+        canonicalCharacterPrompt: canonicalAnchor,
+      });
+    }
+
+    if (!genResult.success) {
+      throw new Error(genResult.error || 'Failed to regenerate sticker.');
+    }
+
+    const processed = await imageProcessor.processSticker(genResult.rawBase64, {
+      expressionId: sticker.expression,
+      expressionName: sticker.expressionName,
+      styleId: order.style,
+      bubbleText: sticker.bubbleText,
+      isAIGenerated: true,
     });
 
     db.updateSticker(orderId, sticker.id, {
       processedImageUrl: processed.publicUrl,
+      webpUrl: processed.webpUrl,
       generationStatus: 'completed',
       retryCount: (sticker.retryCount || 0) + 1,
     });
 
-    return db.getStickers(orderId);
+    const allStickers = db.getStickers(orderId);
+    const totalCompleted = allStickers.filter(s => s.generationStatus === 'completed').length;
+
+    db.updateOrder(orderId, {
+      generationStatus: 'completed',
+      generationProgress: {
+        total: allStickers.length,
+        completed: totalCompleted,
+      },
+    });
+
+    return allStickers;
   }
 }
 

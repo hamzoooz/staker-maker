@@ -15,13 +15,13 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const DEFAULT_SETTINGS: AppSettings = {
-  openaiApiKey: process.env.OPENAI_API_KEY || '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',
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   basePrice: 0.99,
   gatewayFee: 0.20,
   currency: 'USD',
-  zolnaPaySecretKey: process.env.ZOLNAPAY_SECRET_KEY || 'sk_live_4Hm8uQSwQqTWP5oQS-zLU-DzF7ikPMJN',
-  zolnaPayPublishableKey: process.env.ZOLNAPAY_PUBLISHABLE_KEY || 'pk_live_oWwHVSDV7bw2pJTezt1G0jd6eXq5saGp',
+  zolnaPaySecretKey: process.env.ZOLNAPAY_SECRET_KEY || '',
+  zolnaPayPublishableKey: process.env.ZOLNAPAY_PUBLISHABLE_KEY || '',
   zolnaPayApiUrl: process.env.ZOLNAPAY_API_URL || 'http://127.0.0.1:4000/v1',
   systemPrompt: '',
   aiProvider: 'openai',

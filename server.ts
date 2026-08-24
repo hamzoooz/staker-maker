@@ -10,6 +10,7 @@ import { storageService } from './server/services/storage.js';
 import { getPaymentService, ZolnaPayPaymentService } from './server/services/payment.js';
 import { jobQueue } from './server/services/jobQueue.js';
 import { whatsAppService } from './server/services/whatsapp.js';
+import { faceDetector } from './server/services/faceDetector.js';
 import { POPULAR_COUNTRIES, STICKER_PACKAGES, STICKER_STYLES } from './src/data/constants.js';
 import { Order, StickerStyleId } from './src/types/index.js';
 
@@ -63,6 +64,28 @@ async function startServer() {
       domain: 'stickerai.online',
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Validate uploaded image and detect/crop face
+  app.post('/api/validate-image', upload.single('photo'), async (req, res) => {
+    try {
+      let imageBuffer: Buffer;
+      if (req.file) {
+        imageBuffer = req.file.buffer;
+      } else if (req.body.photoBase64) {
+        const base64Data = req.body.photoBase64.replace(/^data:image\/\w+;base64,/, '');
+        imageBuffer = Buffer.from(base64Data, 'base64');
+      } else {
+        res.status(400).json({ success: false, error: 'Please upload a photo.' });
+        return;
+      }
+
+      const result = await faceDetector.validateAndCrop(imageBuffer);
+      res.json(result);
+    } catch (err: any) {
+      console.error('Image validation endpoint error:', err);
+      res.status(500).json({ success: false, error: err.message || 'Failed to process face validation.' });
+    }
   });
 
   // Public config for frontend
@@ -581,7 +604,9 @@ async function startServer() {
         const stickers = await jobQueue.retrySingleSticker(order.id, stickerId);
         res.json({ success: true, stickers });
       } else {
-        jobQueue.queueGeneration(order.id);
+        // Admin "Retry Generation": force a full regenerate, including stickers
+        // already marked completed (e.g. to fix a previously botched pack).
+        jobQueue.queueGeneration(order.id, { force: true });
         res.json({ success: true, message: 'Generation job re-queued.' });
       }
     } catch (err: any) {

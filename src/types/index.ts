@@ -46,7 +46,8 @@ export type ExpressionId =
   | 'sleepy'
   | 'celebrating'
   | 'thank_you'
-  | 'facepalm';
+  | 'facepalm'
+  | 'sheet';
 
 export interface StickerExpressionDef {
   id: ExpressionId;
@@ -68,6 +69,7 @@ export interface GeneratedSticker {
   bubbleText?: string;
   originalImageUrl?: string;
   processedImageUrl: string;
+  webpUrl?: string;
   generationStatus: 'pending' | 'generating' | 'completed' | 'failed';
   retryCount: number;
   error?: string;

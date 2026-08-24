@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import { STICKER_STYLES } from '../../src/data/constants.js';
 import { ExpressionId, StickerStyleId } from '../../src/types/index.js';
 import { storageService } from './storage.js';
+import { db } from '../db.js';
 
 export interface GenerateStickerParams {
   orderId: string;
@@ -32,7 +33,6 @@ class GeminiService {
    */
   public getSystemPrompt(): string {
     const now = Date.now();
-    // Cache for 10 seconds to allow live editing
     if (this.systemPromptCache && now - this.lastPromptRead < 10000) {
       return this.systemPromptCache;
     }
@@ -51,18 +51,23 @@ class GeminiService {
     return 'StickerMe AI Engine: Transform user selfies into expressive, high-impact personalized messaging stickers for WhatsApp and Telegram.';
   }
 
+  public getApiKey(): string {
+    const settings = db.getSettings();
+    return settings.geminiApiKey || process.env.GEMINI_API_KEY || '';
+  }
+
   private getClient(): GoogleGenAI | null {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = this.getApiKey();
     if (!apiKey) return null;
 
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'stickerai-build',
-        },
-      },
-    });
+    try {
+      return new GoogleGenAI({
+        apiKey,
+      });
+    } catch (e) {
+      console.error('Failed to initialize GoogleGenAI client:', e);
+      return null;
+    }
   }
 
   /**
@@ -87,70 +92,8 @@ class GeminiService {
         return `Character in ${styleObj.name} style.`;
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: fileData.mimeType,
-                data: fileData.base64,
-              },
-            },
-            {
-              text: `[SYSTEM PROMPT RULES]\n${systemPrompt}\n\n[TASK]\nAnalyze the person's face in this selfie. Extract key recognizable identity characteristics: gender presentation, approximate age, hairstyle and color, face shape, skin tone, facial hair (if any), eye shape/color, glasses or accessories, and clothing color.
-Summarize this into a concise 2-sentence character design description suitable for creating consistent WhatsApp stickers in "${styleObj.name}" style (${styleObj.promptModifier}).
-Emphasize preserving recognizable identity while adapting to a cute, expressive sticker character.`,
-            },
-          ],
-        },
-      });
-
-      return response.text?.trim() || `Character in ${styleObj.name} style.`;
-    } catch (e) {
-      console.warn('Face analysis fallback:', e);
-      return `Character in ${styleObj.name} style based on photo features.`;
-    }
-  }
-
-  /**
-   * Generates a single sticker image with the selected style and expression
-   * adhering strictly to system-promper.md rules.
-   */
-  public async generateSticker(params: GenerateStickerParams): Promise<GeneratedStickerResult> {
-    const ai = this.getClient();
-    const styleObj = STICKER_STYLES.find(s => s.id === params.styleId) || STICKER_STYLES[0];
-    const systemPrompt = this.getSystemPrompt();
-
-    // If no API key configured, return success so imageProcessor renders vector/canvas artwork
-    if (!ai) {
-      console.log(`[Gemini Mock/Canvas] Generating sticker for ${params.expressionName}`);
-      return {
-        success: true,
-      };
-    }
-
-    try {
-      const fileData = await storageService.getFileBase64(params.photoUrl);
-      if (!fileData) {
-        throw new Error('Reference selfie could not be loaded');
-      }
-
-      const stickerPrompt = `[SYSTEM INSTRUCTIONS]\n${systemPrompt}\n\n[GENERATION REQUEST]\nCreate a single WhatsApp messaging sticker based on the person in the reference selfie photo.
-Preserve recognizable facial identity, key appearance, hair style, skin tone, and accessories.
-Transform the person into a clean, highly expressive sticker character in this art style: ${styleObj.promptModifier}.
-Expression and Action: ${params.expressionPrompt} (${params.expressionName}).
-Character Identity Context: ${params.canonicalCharacterPrompt || ''}.
-Sticker Requirements:
-- Pure white or transparent isolated plain background with no background scenery or complex clutter.
-- Bold readable shapes, polished digital illustration, punchy emotion, crisp silhouette with a clean white die-cut sticker outline contour.
-- Centered waist-up or head-and-shoulders composition.
-- Wholesome, friendly, suitable for WhatsApp family and friends messaging.`;
-
-      // Try image generation models
-      const modelCandidates = ['gemini-2.5-flash', 'gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image'];
-
-      for (const model of modelCandidates) {
+      const visionModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+      for (const model of visionModels) {
         try {
           const response = await ai.models.generateContent({
             model,
@@ -163,45 +106,83 @@ Sticker Requirements:
                   },
                 },
                 {
-                  text: stickerPrompt,
+                  text: `[SYSTEM PROMPT RULES]\n${systemPrompt}\n\n[TASK]\nAnalyze the person's face in this selfie. Extract key recognizable identity characteristics: gender presentation, approximate age, hairstyle and color, face shape, skin tone, facial hair (if any), eye shape/color, glasses or accessories, and clothing color.
+Summarize this into a concise 2-sentence character design description suitable for creating consistent WhatsApp stickers in "${styleObj.name}" style (${styleObj.promptModifier}).
+Emphasize preserving recognizable identity while adapting to a cute, expressive sticker character.`,
                 },
               ],
             },
-            config: {
-              imageConfig: {
-                aspectRatio: '1:1',
-                imageSize: '512px',
-              },
-            } as any,
           });
 
-          // Check for inline generated image data
-          for (const candidate of response.candidates || []) {
-            for (const part of candidate.content?.parts || []) {
-              if (part.inlineData && part.inlineData.data) {
-                const rawBase64 = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-                return {
-                  rawBase64,
-                  success: true,
-                };
-              }
-            }
+          if (response.text?.trim()) {
+            return response.text.trim();
           }
-        } catch (modelErr: any) {
-          console.warn(`Model ${model} attempt note:`, modelErr?.message || modelErr);
-          // continue to next model candidate
+        } catch (mErr) {
+          console.warn(`Vision model ${model} attempt note:`, mErr);
         }
       }
 
-      // If no image was returned by Gemini vision (e.g. text model only), imageProcessor handles vector/canvas rendering
+      return `Character in ${styleObj.name} style based on photo features.`;
+    } catch (e) {
+      console.warn('Face analysis fallback:', e);
+      return `Character in ${styleObj.name} style based on photo features.`;
+    }
+  }
+
+  /**
+   * Generates a single sticker image with Google Imagen 3
+   */
+  public async generateSticker(params: GenerateStickerParams): Promise<GeneratedStickerResult> {
+    const ai = this.getClient();
+    const styleObj = STICKER_STYLES.find(s => s.id === params.styleId) || STICKER_STYLES[0];
+
+    if (!ai) {
       return {
-        success: true,
+        success: false,
+        error: 'Gemini API key is not configured.',
+      };
+    }
+
+    try {
+      const stickerPrompt = `A high quality WhatsApp messaging sticker illustration of this character: ${params.canonicalCharacterPrompt || 'expressive person'}.
+Art style: ${styleObj.promptModifier}.
+Expression and pose: ${params.expressionPrompt} (${params.expressionName}).
+Sticker specifications: pure white background with clean white die-cut sticker outline contour, isolated subject, waist-up composition, bold readable shapes, vibrant colors, expressive facial emotion, zero background clutter, family-friendly WhatsApp sticker asset.`;
+
+      const imagenModels = ['imagen-3.0-generate-002', 'imagen-3.0-fast-generate-001'];
+      for (const model of imagenModels) {
+        try {
+          const response = await ai.models.generateImages({
+            model,
+            prompt: stickerPrompt,
+            config: {
+              numberOfImages: 1,
+              aspectRatio: '1:1',
+              outputMimeType: 'image/png',
+            },
+          });
+
+          const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+          if (imageBytes) {
+            return {
+              rawBase64: `data:image/png;base64,${imageBytes}`,
+              success: true,
+            };
+          }
+        } catch (imgErr: any) {
+          console.warn(`Gemini image generation model ${model} error:`, imgErr?.message || imgErr);
+        }
+      }
+
+      return {
+        success: false,
+        error: 'Gemini Imagen returned no image bytes.',
       };
     } catch (error: any) {
       console.error(`Gemini generation error for ${params.expressionId}:`, error?.message || error);
       return {
         success: false,
-        error: error?.message || 'AI Generation failed',
+        error: error?.message || 'Gemini image generation failed',
       };
     }
   }
