@@ -256,43 +256,59 @@ async function startServer() {
 
       // Handle photo upload
       let photoUrl = '';
+
+      // The face-validation step (/api/validate-image) already saves a cropped
+      // photo server-side and returns its URL (e.g. "/assets/uploads/xxx.png").
+      // The frontend then reuses that URL as its "photo" — it is NOT base64
+      // image data, so trying to base64-decode it produces a few garbage bytes
+      // (this was the actual cause of "not a valid photo" false rejections).
+      // Detect that case and just reuse the already-stored file directly.
+      if (!req.file && typeof photoBase64 === 'string' && photoBase64.startsWith('/assets/uploads/')) {
+        const localPath = path.join(process.cwd(), 'public', photoBase64.replace(/^\//, ''));
+        if (fs.existsSync(localPath)) {
+          photoUrl = photoBase64;
+        }
+      }
+
       let rawPhotoBuffer: Buffer | null = null;
-      if (req.file) {
-        rawPhotoBuffer = req.file.buffer;
-      } else if (photoBase64 && typeof photoBase64 === 'string') {
-        rawPhotoBuffer = Buffer.from(photoBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-      } else {
-        res.status(400).json({ error: 'Please upload a clear selfie photo.' });
-        return;
-      }
+      if (!photoUrl) {
+        if (req.file) {
+          rawPhotoBuffer = req.file.buffer;
+        } else if (photoBase64 && typeof photoBase64 === 'string') {
+          rawPhotoBuffer = Buffer.from(photoBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        } else {
+          res.status(400).json({ error: 'Please upload a clear selfie photo.' });
+          return;
+        }
 
-      // Lightweight sanity check only — catches genuine garbage (e.g. a 41-byte
-      // non-image blob) without risking false rejections of real photos in
-      // less-common but valid formats/variants that a full sharp() decode can
-      // be too strict about. A photo that's structurally fine here but still
-      // fails at generation time is caught later by the "Generation Failed +
-      // Retry" UI instead of blocking the customer outright.
-      const isKnownImageSignature =
-        rawPhotoBuffer.length >= 500 && (
-          (rawPhotoBuffer[0] === 0xff && rawPhotoBuffer[1] === 0xd8 && rawPhotoBuffer[2] === 0xff) || // JPEG
-          (rawPhotoBuffer[0] === 0x89 && rawPhotoBuffer[1] === 0x50 && rawPhotoBuffer[2] === 0x4e && rawPhotoBuffer[3] === 0x47) || // PNG
-          (rawPhotoBuffer.slice(0, 4).toString('ascii') === 'RIFF' && rawPhotoBuffer.slice(8, 12).toString('ascii') === 'WEBP') || // WebP
-          (rawPhotoBuffer.slice(4, 12).toString('ascii').includes('ftyp')) // HEIC/HEIF/AVIF (ISO base media container)
-        );
+        // Lightweight sanity check only — catches genuine garbage (e.g. a 41-byte
+        // non-image blob) without risking false rejections of real photos in
+        // less-common but valid formats/variants that a full sharp() decode can
+        // be too strict about. A photo that's structurally fine here but still
+        // fails at generation time is caught later by the "Generation Failed +
+        // Retry" UI instead of blocking the customer outright.
+        const isKnownImageSignature =
+          rawPhotoBuffer.length >= 500 && (
+            (rawPhotoBuffer[0] === 0xff && rawPhotoBuffer[1] === 0xd8 && rawPhotoBuffer[2] === 0xff) || // JPEG
+            (rawPhotoBuffer[0] === 0x89 && rawPhotoBuffer[1] === 0x50 && rawPhotoBuffer[2] === 0x4e && rawPhotoBuffer[3] === 0x47) || // PNG
+            (rawPhotoBuffer.slice(0, 4).toString('ascii') === 'RIFF' && rawPhotoBuffer.slice(8, 12).toString('ascii') === 'WEBP') || // WebP
+            (rawPhotoBuffer.slice(4, 12).toString('ascii').includes('ftyp')) // HEIC/HEIF/AVIF (ISO base media container)
+          );
 
-      if (!isKnownImageSignature) {
-        console.warn(`Rejected order creation: unrecognized image data (${rawPhotoBuffer.length} bytes, first 16 bytes: ${rawPhotoBuffer.subarray(0, 16).toString('hex')})`);
-        res.status(400).json({ error: 'The uploaded file is not a valid photo. Please choose a different image.' });
-        return;
-      }
+        if (!isKnownImageSignature) {
+          console.warn(`Rejected order creation: unrecognized image data (${rawPhotoBuffer.length} bytes, first 16 bytes: ${rawPhotoBuffer.subarray(0, 16).toString('hex')})`);
+          res.status(400).json({ error: 'The uploaded file is not a valid photo. Please choose a different image.' });
+          return;
+        }
 
-      if (req.file) {
-        const ext = req.file.mimetype.includes('webp') ? 'webp' : req.file.mimetype.includes('png') ? 'png' : 'jpg';
-        const stored = await storageService.saveImage(rawPhotoBuffer, 'uploads', ext);
-        photoUrl = stored.publicUrl;
-      } else {
-        const stored = await storageService.saveImage(rawPhotoBuffer, 'uploads', 'jpg');
-        photoUrl = stored.publicUrl;
+        if (req.file) {
+          const ext = req.file.mimetype.includes('webp') ? 'webp' : req.file.mimetype.includes('png') ? 'png' : 'jpg';
+          const stored = await storageService.saveImage(rawPhotoBuffer, 'uploads', ext);
+          photoUrl = stored.publicUrl;
+        } else {
+          const stored = await storageService.saveImage(rawPhotoBuffer, 'uploads', 'jpg');
+          photoUrl = stored.publicUrl;
+        }
       }
 
       // Validate sticker style
