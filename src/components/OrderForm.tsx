@@ -4,29 +4,20 @@ import {
   Camera,
   Trash2,
   Sparkles,
-  ShieldCheck,
   ArrowRight,
-  Phone,
   Search,
   AlertCircle,
-  Lock,
   Loader2,
-  RefreshCw,
-  Zap,
-  CreditCard,
-  Image as ImageIcon
 } from 'lucide-react';
-import { POPULAR_COUNTRIES, STICKER_PACKAGES } from '../data/constants.js';
+import { POPULAR_COUNTRIES, STICKER_STYLES } from '../data/constants.js';
 import { CountryCodeItem, Order, StickerStyleId } from '../types/index.js';
-import { CardPaymentModal } from './CardPaymentModal.js';
 
 interface OrderFormProps {
   lang: 'en' | 'ar';
   selectedStyle: StickerStyleId;
   onStyleChange: (styleId: StickerStyleId) => void;
-  onOrderCreated: (order: Order, checkoutUrl?: string) => void;
+  onOrderCreated: (order: Order) => void;
   onOpenPrivacy: () => void;
-  isAdmin?: boolean;
 }
 
 export const OrderForm: React.FC<OrderFormProps> = ({
@@ -34,8 +25,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   selectedStyle,
   onStyleChange,
   onOrderCreated,
-  onOpenPrivacy,
-  isAdmin = false,
 }) => {
   // Photo state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -56,8 +45,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   // Form submission state
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [pendingCardOrder, setPendingCardOrder] = useState<Order | null>(null);
-  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
 
   // Face validation states
   const [isValidating, setIsValidating] = useState(false);
@@ -119,7 +106,6 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     } catch (err: any) {
       console.warn('Camera access denied or unavailable:', err);
       setIsCameraActive(false);
-      // On mobile devices, fallback to native camera file input
       if (cameraInputRef.current) {
         cameraInputRef.current.click();
       } else {
@@ -242,129 +228,87 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         formData.append('photoBase64', photoPreview);
       }
 
-      // Check admin auth token
-      const adminToken = localStorage.getItem('stickerai_admin_token');
-      const headers: Record<string, string> = {};
-      if (adminToken) {
-        headers['Authorization'] = `Bearer ${adminToken}`;
-      }
-
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
-        headers,
         body: formData,
       });
 
       const orderData = await orderRes.json();
       if (!orderRes.ok) {
-        throw new Error(orderData.error || 'Failed to create order. Please try again.');
+        throw new Error(orderData.error || 'Failed to generate stickers. Please try again.');
       }
 
-      const createdOrder: Order = orderData.order;
-
-      // If created by Admin or free bypass
-      if (orderData.isAdminOrder || createdOrder.paymentStatus === 'paid') {
-        onOrderCreated(createdOrder);
-        return;
-      }
-
-      if (orderData.checkoutUrl) {
-        window.location.href = orderData.checkoutUrl;
-        return;
-      }
-
-      // Fallback
-      onOrderCreated(createdOrder, orderData.checkoutUrl);
+      onOrderCreated(orderData.order);
     } catch (err: any) {
-      console.error('Order submission failed:', err);
-      setErrorMessage(err.message || 'Something went wrong while creating your order. Please try again.');
+      console.error('Submission failed:', err);
+      setErrorMessage(err.message || 'Something went wrong while starting generation. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <section id="order-section" className="py-10 sm:py-16 bg-slate-50 border-t border-slate-200">
-      <div className="max-w-6xl mx-auto px-3.5 sm:px-6">
+    <section id="order-section" className="py-12 sm:py-20 bg-[#030014] border-t border-slate-800/60 relative">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full blur-[150px] pointer-events-none ambient-cyan opacity-20" />
+
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 relative z-10">
         
         {/* Header */}
-        <div className="text-center max-w-xl mx-auto mb-8 sm:mb-10">
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100/90 text-emerald-900 text-[11px] sm:text-xs font-black mb-2.5">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{lang === 'en' ? 'AI Sticker Studio' : 'استوديو الملصقات الذكية'}</span>
+        <div className="text-center max-w-xl mx-auto mb-10 sm:mb-12">
+          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-300 text-[11px] sm:text-xs font-black mb-2.5 border border-indigo-500/20">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{lang === 'en' ? 'AI Sticker Studio' : 'استوديو الذكاء الاصطناعي'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl font-black text-slate-950 tracking-tight">
-            {lang === 'en' ? 'Create Your 4 Stickers' : 'اصنع حزمة الـ 4 ملصقات الخاصة بك'}
+          <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+            {lang === 'en' ? 'Generate Your Free AI Stickers' : 'توليد ملصقاتك بالذكاء الاصطناعي مجاناً'}
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1.5 font-medium">
+          <p className="text-xs sm:text-sm text-slate-400 mt-2 font-medium">
             {lang === 'en'
-              ? 'Upload your photo and receive your WhatsApp pack in seconds.'
-              : 'ارفع صورتك واحصل على حزمة ملصقاتك في ثوانٍ.'}
+              ? 'Upload your selfie, choose an artistic style, and watch AI build your WhatsApp stickers.'
+              : 'ارفع صورتك الشخصية، اختر الستايل المفضل لديك، وشاهد الذكاء الاصطناعي يبني ملصقاتك.'}
           </p>
         </div>
 
-        {/* Admin VIP Mode Alert */}
-        {isAdmin && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white flex items-center justify-between shadow-xl">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-xl bg-purple-600/30 text-purple-300 flex items-center justify-center border border-purple-500/40">
-                <Zap className="w-4 h-4 text-amber-300" />
-              </div>
-              <div>
-                <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">
-                  {lang === 'en' ? 'Admin VIP Mode Active' : 'وضع الأدمن المميز مفعّل'}
-                </h4>
-                <p className="text-xs text-slate-300">
-                  {lang === 'en' ? 'Unlimited Free Generations ($0.00)' : 'توليد غير محدود ومجاني 100%'}
-                </p>
-              </div>
-            </div>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[11px] font-black border border-emerald-500/30">
-              FREE VIP
-            </span>
-          </div>
-        )}
-
         {/* Error Alert */}
         {errorMessage && (
-          <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="mb-6 p-4 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-200 text-xs sm:text-sm flex items-start space-x-3 backdrop-blur-xs">
+            <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="font-bold">{errorMessage}</p>
             </div>
             <button
               onClick={() => setErrorMessage(null)}
-              className="text-rose-500 hover:text-rose-800 text-xs font-bold"
+              className="text-rose-400 hover:text-rose-200 text-xs font-bold"
             >
               ✕
             </button>
           </div>
         )}
 
-        <form onSubmit={handleOrderSubmit} className="space-y-6 sm:space-y-8">
+        <form onSubmit={handleOrderSubmit} className="space-y-8">
           
           {/* STEP 1: UPLOAD PHOTO */}
-          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-5 sm:p-8 shadow-2xl backdrop-blur-md space-y-4 sm:space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2.5 sm:space-x-3">
-                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
+                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-lg shadow-indigo-500/20">
                   1
                 </span>
                 <div>
-                  <h3 className="text-sm sm:text-lg font-black text-slate-900">
+                  <h3 className="text-sm sm:text-lg font-black text-white">
                     {lang === 'en' ? 'Upload your selfie' : 'ارفع صورة سيلفي'}
                   </h3>
-                  <p className="text-[11px] sm:text-xs text-slate-500">
+                  <p className="text-[11px] sm:text-xs text-slate-400">
                     {lang === 'en' ? 'Clear photo where your face is visible' : 'صورة واضحة يظهر فيها وجهك بوضوح'}
                   </p>
                 </div>
               </div>
-              <span className="text-[10px] sm:text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
-                JPG, PNG
+              <span className="text-[10px] sm:text-xs font-bold text-slate-300 bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-700/50">
+                JPG, PNG, WEBP
               </span>
             </div>
 
-            {/* Hidden native file inputs */}
+            {/* Hidden inputs */}
             <input
               ref={fileInputRef}
               type="file"
@@ -390,32 +334,32 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 onClick={() => fileInputRef.current?.click()}
                 className={`relative border-2 border-dashed rounded-2xl sm:rounded-3xl p-6 sm:p-10 text-center transition-all cursor-pointer flex flex-col items-center justify-center group ${
                   isDragging
-                    ? 'border-indigo-500 bg-indigo-50/50 scale-[0.99]'
-                    : 'border-slate-300 hover:border-indigo-500 hover:bg-slate-50/50'
+                    ? 'border-indigo-500 bg-indigo-500/5 scale-[0.99]'
+                    : 'border-slate-800 hover:border-indigo-500/70 hover:bg-slate-900/30'
                 }`}
               >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-indigo-500/20 shadow-inner">
                   <UploadCloud className="w-6 h-6 sm:w-7 sm:h-7" />
                 </div>
-                <h4 className="text-xs sm:text-base font-extrabold text-slate-900">
+                <h4 className="text-xs sm:text-base font-extrabold text-slate-200">
                   {lang === 'en' ? 'Tap to choose photo from gallery' : 'اضغط لاختيار صورة من الألبوم'}
                 </h4>
-                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-1">
                   {lang === 'en' ? 'Or drag and drop photo here' : 'أو اسحب وأفلت الصورة هنا'}
                 </p>
 
                 {/* Camera Snap Button */}
-                <div className="mt-3.5 flex items-center space-x-2">
+                <div className="mt-4">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       startCamera();
                     }}
-                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer shadow-md"
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer border border-slate-700 shadow-md"
                   >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>{lang === 'en' ? 'Take Selfie Photo' : 'التقاط سيلفي مباشر'}</span>
+                    <Camera className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>{lang === 'en' ? 'Take Live Selfie' : 'التقاط صورة حية'}</span>
                   </button>
                 </div>
               </div>
@@ -423,20 +367,20 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
             {/* Camera View */}
             {isCameraActive && (
-              <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-950 aspect-square max-w-sm mx-auto flex flex-col items-center justify-center">
+              <div className="relative rounded-2xl overflow-hidden bg-slate-950 aspect-square max-w-xs mx-auto flex flex-col items-center justify-center border border-slate-800 shadow-2xl">
                 <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 <div className="absolute bottom-3 inset-x-3 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={stopCamera}
-                    className="px-3.5 py-2 rounded-xl bg-slate-900/80 text-white text-xs font-bold backdrop-blur-xs"
+                    className="px-3.5 py-2 rounded-xl bg-slate-900/90 text-white text-xs font-bold border border-slate-800 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={capturePhoto}
-                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg cursor-pointer"
                   >
                     Snap Photo
                   </button>
@@ -444,25 +388,32 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               </div>
             )}
 
-            {/* Photo Validation Loading State */}
+            {/* Photo Validation / Face Scanning Animation */}
             {isValidating && (
-              <div className="p-10 rounded-2xl bg-indigo-50/50 border border-indigo-200 text-center flex flex-col items-center justify-center space-y-3">
-                <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-                <h4 className="text-sm font-extrabold text-slate-900">
-                  {lang === 'en' ? 'Detecting face & validating photo...' : 'جاري التحقق من ملامح الوجه...'}
+              <div className="relative p-10 rounded-2xl bg-indigo-950/20 border border-indigo-900/40 text-center flex flex-col items-center justify-center space-y-4 overflow-hidden min-h-[220px]">
+                {/* Laser Scanning line effect */}
+                <div className="absolute left-0 w-full h-[3px] bg-cyan-400 shadow-[0_0_15px_#22d3ee] animate-scanner opacity-80" />
+                
+                <Loader2 className="w-10 h-10 text-indigo-400 animate-spin z-10" />
+                <h4 className="text-sm font-extrabold text-white z-10">
+                  {lang === 'en' ? 'Scanning photo & verifying face...' : 'جاري فحص ملامح الوجه بالذكاء الاصطناعي...'}
                 </h4>
-                <p className="text-xs text-slate-500">
-                  {lang === 'en' ? 'This ensures your portrait is suitable for character generation.' : 'هذا يضمن أن الصورة الشخصية مناسبة لتوليد الستيكرات.'}
+                <p className="text-xs text-slate-400 z-10">
+                  {lang === 'en' ? 'Detecting features to generate your unique sticker identity.' : 'نقوم بتحديد الملامح لتثبيت هوية الشخصية الكرتونية.'}
                 </p>
               </div>
             )}
 
-            {/* Photo Preview & Live Sticker Sample */}
+            {/* Photo Preview & scanning laser overlay if verified */}
             {photoPreview && !isValidating && (
-              <div className="space-y-4 max-w-lg mx-auto">
-                <div className="relative rounded-3xl overflow-hidden bg-slate-100 border-2 border-indigo-500/40 shadow-lg">
-                  <img src={photoPreview} alt="Selfie preview" className="w-full h-56 object-cover" />
-                  <div className="absolute top-2.5 right-2.5 flex items-center space-x-2">
+              <div className="space-y-4 max-w-sm mx-auto">
+                <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-xl aspect-square flex items-center justify-center">
+                  <img src={photoPreview} alt="Selfie preview" className="w-full h-full object-cover" />
+                  
+                  {/* Gentle scanline glow on loaded image */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent pointer-events-none" />
+
+                  <div className="absolute top-2.5 right-2.5">
                     <button
                        type="button"
                        onClick={() => {
@@ -470,100 +421,132 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                          setPhotoFile(null);
                          setValidationSuccess(false);
                        }}
-                       className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-600 text-white backdrop-blur-xs transition-colors cursor-pointer shadow-md"
+                       className="p-2 rounded-xl bg-slate-950/80 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-lg border border-slate-800"
                        title="Remove Photo"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="absolute bottom-2.5 inset-x-2.5 bg-slate-950/80 backdrop-blur-md rounded-2xl p-2.5 text-white flex items-center justify-between text-xs">
-                    <div className="flex items-center space-x-2">
-                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="font-bold text-[11px]">
-                        {lang === 'en' ? 'Photo Ready for Stickers' : 'تم اختيار الصورة وجاهزة لتوليد الملصقات'}
+                  <div className="absolute bottom-2.5 inset-x-2.5 bg-slate-950/90 backdrop-blur-md rounded-xl p-2.5 text-white flex items-center justify-between text-[11px] border border-slate-800">
+                    <div className="flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-bold">
+                        {lang === 'en' ? 'Face Verified' : 'تم التحقق من الوجه'}
                       </span>
                     </div>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      ✓ {lang === 'en' ? 'Verified Face' : 'تم التحقق من الوجه'}
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      AI READY
                     </span>
-                  </div>
-                </div>
-
-                {/* Mini Preview Strip */}
-                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-10 h-10 rounded-full border-2 border-white shadow-md overflow-hidden bg-slate-900">
-                      <img src={photoPreview} alt="avatar" className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-black text-indigo-950">
-                        {lang === 'en' ? 'Personalized Likeness' : 'تطبيق ملامحك على الستيكرات'}
-                      </p>
-                      <p className="text-[10px] text-indigo-700">
-                        {lang === 'en' ? 'Your detected face will be used to generate your custom stickers' : 'سيتم استخدام الوجه المستخلص لتوليد ملصقاتك المخصصة'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex -space-x-1.5 text-sm">
-                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">😍</span>
-                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">🤣</span>
-                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">🥳</span>
-                    <span className="p-1 rounded-full bg-white shadow-xs border border-slate-100">👍</span>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* STEP 2: OPTIONAL WHATSAPP NUMBER */}
-          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
+          {/* STEP 2: CHOOSE STYLE */}
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-5 sm:p-8 shadow-2xl backdrop-blur-md space-y-4 sm:space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2.5 sm:space-x-3">
-                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
+                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-lg shadow-indigo-500/20">
                   2
                 </span>
                 <div>
-                  <h3 className="text-sm sm:text-lg font-black text-slate-900">
-                    {lang === 'en' ? 'WhatsApp Number (Optional)' : 'رقم الواتساب (اختياري)'}
+                  <h3 className="text-sm sm:text-lg font-black text-white">
+                    {lang === 'en' ? 'Select Sticker Style' : 'اختر نمط الملصقات'}
                   </h3>
-                  <p className="text-[11px] sm:text-xs text-slate-500">
-                    {lang === 'en' ? 'Leave blank to view & download directly' : 'اتركه فارغاً لتنزيل الملصقات وإضافتها مباشرة'}
+                  <p className="text-[11px] sm:text-xs text-slate-400">
+                    {lang === 'en' ? 'Choose the art style for your stickers' : 'اختر الطابع الفني واللون العام لملصقاتك'}
                   </p>
                 </div>
               </div>
-              <span className="text-[10px] sm:text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
+            </div>
+
+            {/* Grid of Styles */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {STICKER_STYLES.map((style) => {
+                const isSelected = selectedStyle === style.id;
+                return (
+                  <button
+                    key={style.id}
+                    type="button"
+                    onClick={() => onStyleChange(style.id)}
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-lg ring-1 ring-indigo-500/50 scale-[1.02]'
+                        : 'bg-slate-950/40 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br ${style.previewColor} shadow-inner`}>
+                      {style.sampleEmoji}
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black block">
+                        {lang === 'en' ? style.name : style.nameAr}
+                      </span>
+                      <span className="text-[9px] opacity-60 block line-clamp-1 max-w-[120px]">
+                        {lang === 'en' ? style.description : style.descriptionAr}
+                      </span>
+                    </div>
+                    {style.badge && (
+                      <span className="text-[8px] px-1.5 py-0.5 rounded-md bg-cyan-500 text-slate-950 font-black">
+                        {style.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* STEP 3: OPTIONAL WHATSAPP NUMBER */}
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-5 sm:p-8 shadow-2xl backdrop-blur-md space-y-4 sm:space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 sm:space-x-3">
+                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  3
+                </span>
+                <div>
+                  <h3 className="text-sm sm:text-lg font-black text-white">
+                    {lang === 'en' ? 'WhatsApp Number (Optional)' : 'رقم الواتساب (اختياري)'}
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-slate-400">
+                    {lang === 'en' ? 'Leave blank to view and download directly' : 'اتركه فارغاً لعرض وتحميل الملصقات مباشرة من المتصفح'}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] sm:text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-full border border-cyan-500/20">
                 {lang === 'en' ? 'Optional' : 'اختياري'}
               </span>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               {/* Country Picker */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setIsCountryPickerOpen(!isCountryPickerOpen)}
-                  className="w-full sm:w-48 px-3.5 py-3 rounded-xl border border-slate-300 bg-white flex items-center justify-between text-xs sm:text-sm font-bold text-slate-900 cursor-pointer shadow-2xs"
+                  className="w-full sm:w-48 px-3.5 py-3 rounded-xl border border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs sm:text-sm font-bold text-slate-300 cursor-pointer shadow-sm hover:border-slate-700"
                 >
                   <div className="flex items-center space-x-2 truncate">
                     <span className="text-base">{selectedCountry.flag}</span>
                     <span className="truncate">{selectedCountry.name}</span>
                   </div>
-                  <span className="font-mono text-indigo-600 font-bold ml-1 shrink-0">
+                  <span className="font-mono text-indigo-400 font-bold ml-1 shrink-0">
                     {selectedCountry.dialCode}
                   </span>
                 </button>
 
                 {isCountryPickerOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 p-2 space-y-1">
-                    <div className="sticky top-0 bg-white pb-2">
+                  <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-y-auto bg-slate-900 rounded-2xl shadow-2xl border border-slate-800 z-50 p-2 space-y-1">
+                    <div className="sticky top-0 bg-slate-900 pb-2">
                       <div className="relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-3 text-slate-400" />
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-3 text-slate-500" />
                         <input
                           type="text"
                           placeholder="Search country..."
                           value={countrySearch}
                           onChange={(e) => setCountrySearch(e.target.value)}
-                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none"
+                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-800 bg-slate-950 text-slate-200 outline-none"
                         />
                       </div>
                     </div>
@@ -574,10 +557,10 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                           setSelectedCountry(c);
                           setIsCountryPickerOpen(false);
                         }}
-                        className="p-2 rounded-xl text-xs hover:bg-indigo-50 cursor-pointer flex items-center justify-between"
+                        className="p-2 rounded-xl text-xs hover:bg-slate-800 text-slate-300 cursor-pointer flex items-center justify-between"
                       >
                         <span>{c.flag} {c.name}</span>
-                        <span className="font-mono text-indigo-600 font-bold">{c.dialCode}</span>
+                        <span className="font-mono text-indigo-400 font-bold">{c.dialCode}</span>
                       </div>
                     ))}
                   </div>
@@ -591,103 +574,58 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   placeholder={selectedCountry.formatPlaceholder || '55 123 4567'}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:border-indigo-500 font-mono"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 text-sm font-medium focus:outline-none focus:border-indigo-500 font-mono shadow-sm"
                 />
               </div>
             </div>
 
             {phoneError && (
-              <p className="text-xs text-rose-600 font-semibold">{phoneError}</p>
+              <p className="text-xs text-rose-500 font-semibold">{phoneError}</p>
             )}
           </div>
 
-          {/* STEP 3: PACKAGE SUMMARY & CHECKOUT */}
-          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-8 shadow-2xl space-y-5 sm:space-y-6 border border-slate-800">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
-              <div>
-                <span className="text-[10px] sm:text-xs font-extrabold text-indigo-400 tracking-wider uppercase">
-                  Starter Pack
-                </span>
-                <h3 className="text-lg sm:text-2xl font-black mt-0.5">
-                  {lang === 'en' ? 'Personalized AI Stickers Pack' : 'حزمة الملصقات الذكية المخصصة'}
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                  {lang === 'en' ? '4 Unique Expressions • High Quality Transparent Stickers' : '4 تعبيرات فريدة مخصصة • ملصقات شفافة بجودة عالية'}
-                </p>
-              </div>
-
-              <div className="text-left sm:text-right">
-                <div className="flex items-baseline space-x-1">
-                  <span className="text-2xl sm:text-3xl font-black text-white">$0.99</span>
-                  <span className="text-[11px] text-slate-400">+ $0.20 fee</span>
-                </div>
-                <span className="text-[10px] sm:text-[11px] text-emerald-400 block font-black">Total: $1.19 USD</span>
-              </div>
-            </div>
-
-            {/* Submit CTA */}
+          {/* GENERATE CTA BUTTON */}
+          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-8 shadow-2xl border border-slate-850">
             <div>
               <button
                 type="submit"
                 disabled={isLoading || isValidating || !validationSuccess}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] disabled:opacity-75 text-white font-black text-sm sm:text-lg shadow-xl shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 active:scale-[0.99] disabled:opacity-50 text-white font-black text-sm sm:text-lg shadow-lg shadow-indigo-500/20 flex items-center justify-center space-x-2 transition-all cursor-pointer border border-indigo-500/30"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>{lang === 'en' ? 'Generating My Stickers...' : 'جاري توليد ملصقاتي المخصصة...'}</span>
+                    <span>{lang === 'en' ? 'Generating My Stickers...' : 'جاري توليد ملصقاتك بالذكاء الاصطناعي...'}</span>
                   </>
                 ) : isValidating ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>{lang === 'en' ? 'Validating Photo...' : 'جاري التحقق من الصورة...'}</span>
+                    <span>{lang === 'en' ? 'Scanning Photo...' : 'جاري فحص الصورة الشخصية...'}</span>
                   </>
                 ) : !validationSuccess ? (
-                  <span>{lang === 'en' ? 'Please upload a valid face photo' : 'يرجى رفع صورة وجه صالحة'}</span>
-                ) : isAdmin ? (
-                  <>
-                    <Zap className="w-5 h-5 text-amber-300" />
-                    <span>{lang === 'en' ? 'Generate 4 Stickers (Free Admin VIP)' : 'توليد 4 ملصقات مخصصة (مجاني للأدمن)'}</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </>
+                  <span>{lang === 'en' ? 'Please upload a face photo' : 'يرجى رفع صورة وجه صحيحة أولاً'}</span>
                 ) : (
                   <>
-                    <CreditCard className="w-5 h-5" />
-                    <span>{lang === 'en' ? 'Generate My Stickers' : 'توليد ملصقاتي المخصصة'}</span>
-                    <ArrowRight className="w-5 h-5" />
+                    <Sparkles className="w-5 h-5 text-cyan-400" />
+                    <span>{lang === 'en' ? 'Generate My Free AI Stickers' : 'توليد ملصقاتي مجاناً بالذكاء الاصطناعي'}</span>
+                    <ArrowRight className={`w-5 h-5 ${lang === 'ar' ? 'rotate-180' : ''}`} />
                   </>
                 )}
               </button>
 
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2.5 text-[10px] sm:text-[11px] text-slate-400">
-                <span>🔒 256-bit Encrypted</span>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2.5 text-[10px] sm:text-[11px] text-slate-500">
+                <span>🛡️ Secure Processing</span>
                 <span>•</span>
-                <span>Direct WhatsApp Pack Addition</span>
+                <span>✨ 4 Unique Expression Pack</span>
                 <span>•</span>
-                <span>Instant Delivery</span>
+                <span>⚡ Instant Web & WhatsApp Access</span>
               </div>
             </div>
-
           </div>
 
         </form>
 
       </div>
-
-      {/* Card Payment Modal */}
-      {pendingCardOrder && (
-        <CardPaymentModal
-          isOpen={isCardModalOpen}
-          order={pendingCardOrder}
-          lang={lang}
-          onClose={() => setIsCardModalOpen(false)}
-          onPaymentSuccess={(updated) => {
-            setIsCardModalOpen(false);
-            onOrderCreated(updated);
-          }}
-        />
-      )}
-
     </section>
   );
 };

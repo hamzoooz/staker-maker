@@ -289,16 +289,16 @@ async function startServer() {
         style: validStyle,
         packageId: 'pack_12',
         stickerCount: 4,
-        basePrice: isAdminOrder ? 0 : basePrice,
-        feePrice: isAdminOrder ? 0 : feePrice,
-        price: isAdminOrder ? 0 : totalPrice,
+        basePrice: 0,
+        feePrice: 0,
+        price: 0,
         currency: 'USD',
-        paymentStatus: isAdminOrder ? 'paid' : 'pending',
+        paymentStatus: 'paid',
         isAdminOrder,
         adminUser: admin ? admin.email : undefined,
         generationStatus: 'queued',
         generationProgress: {
-          total: 12,
+          total: 4,
           completed: 0,
         },
         deliveryStatus: 'pending',
@@ -307,9 +307,7 @@ async function startServer() {
             id: `ev_${Date.now()}`,
             timestamp: now.toISOString(),
             type: 'info',
-            message: isAdminOrder
-              ? `Order created by Admin (${admin?.name}). Free bypass activated.`
-              : 'Order created. Awaiting payment confirmation.',
+            message: 'Order created. AI sticker generation started immediately.',
           },
         ],
         createdAt: now.toISOString(),
@@ -319,30 +317,13 @@ async function startServer() {
 
       db.createOrder(newOrder);
 
-      let checkoutUrl = '';
-      if (!isAdminOrder) {
-        try {
-          const baseUrl = process.env.APP_BASE_URL || process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-          const successUrl = `${baseUrl}/order/${orderId}?payment=success`;
-          const cancelUrl = `${baseUrl}/order/${orderId}?payment=cancelled`;
-          const paymentService = getPaymentService();
-          const session = await paymentService.createCheckoutSession(newOrder, successUrl, cancelUrl);
-          checkoutUrl = session.checkoutUrl;
-          db.updateOrder(orderId, { paymentId: session.paymentId });
-        } catch (e) {
-          console.warn('Could not auto-create ZolnaPay checkout session:', e);
-        }
-      }
-
-      // If created by Admin, immediately queue generation pipeline without charging!
-      if (isAdminOrder) {
-        jobQueue.queueGeneration(orderId);
-      }
+      // Instantly queue generation pipeline for the free order!
+      jobQueue.queueGeneration(orderId);
 
       res.status(201).json({
         success: true,
         order: db.getOrder(orderId) || newOrder,
-        checkoutUrl,
+        checkoutUrl: '',
         isAdminOrder,
       });
     } catch (err: any) {
