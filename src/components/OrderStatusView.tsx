@@ -36,6 +36,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
   const [isRetryingSticker, setIsRetryingSticker] = useState<string | null>(null);
+  const [isRetryingOrder, setIsRetryingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
 
@@ -85,6 +86,24 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
       setError(err.message);
     } finally {
       setIsSimulatingPayment(false);
+    }
+  };
+
+  // Retry the whole order after a total generation failure
+  const handleRetryOrder = async () => {
+    setIsRetryingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/retry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error('Retry failed');
+      await fetchStatus();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsRetryingOrder(false);
     }
   };
 
@@ -236,6 +255,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
   if (!order) return null;
 
   const isPaid = order.paymentStatus === 'paid';
+  const isFailed = order.generationStatus === 'failed';
   const isCompleted = order.generationStatus === 'completed';
   const completedStickersCount = stickers.filter((s) => s.generationStatus === 'completed').length;
   const totalStickersForProgress = order.stickerCount || stickers.length || 4;
@@ -441,8 +461,31 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
             </div>
           )}
 
+          {/* Generation failed entirely — don't leave the customer staring at a frozen progress bar */}
+          {isPaid && isFailed && (
+            <div className="p-6 sm:p-8 rounded-2xl bg-rose-50 border border-rose-200 space-y-4 shadow-xs text-center">
+              <AlertCircle className="w-10 h-10 text-rose-500 mx-auto" />
+              <h4 className="font-black text-base sm:text-lg text-slate-900">
+                {lang === 'en' ? 'Sticker Generation Failed' : 'فشل توليد الملصقات'}
+              </h4>
+              <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
+                {lang === 'en'
+                  ? "Something went wrong while creating your stickers. Your payment is safe — tap below to try again."
+                  : 'حدث خطأ أثناء إنشاء ملصقاتك. دفعتك محفوظة وآمنة — اضغط أدناه لإعادة المحاولة.'}
+              </p>
+              <button
+                onClick={handleRetryOrder}
+                disabled={isRetryingOrder}
+                className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 disabled:opacity-60 text-white text-sm font-bold transition-colors cursor-pointer"
+              >
+                {isRetryingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                <span>{lang === 'en' ? 'Retry Generation' : 'إعادة محاولة التوليد'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Progress bar */}
-          {isPaid && (
+          {isPaid && !isFailed && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span>{lang === 'en' ? 'Generation Progress' : 'نسبة الإنجاز'}</span>

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
+import sharp from 'sharp';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.js';
@@ -256,16 +257,36 @@ async function startServer() {
 
       // Handle photo upload
       let photoUrl = '';
+      let rawPhotoBuffer: Buffer | null = null;
       if (req.file) {
-        const ext = req.file.mimetype.includes('webp') ? 'webp' : req.file.mimetype.includes('png') ? 'png' : 'jpg';
-        const stored = await storageService.saveImage(req.file.buffer, 'uploads', ext);
-        photoUrl = stored.publicUrl;
+        rawPhotoBuffer = req.file.buffer;
       } else if (photoBase64 && typeof photoBase64 === 'string') {
-        const stored = await storageService.saveBase64Image(photoBase64, 'uploads', 'jpg');
-        photoUrl = stored.publicUrl;
+        rawPhotoBuffer = Buffer.from(photoBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       } else {
         res.status(400).json({ error: 'Please upload a clear selfie photo.' });
         return;
+      }
+
+      // Reject anything that isn't an actual decodable image before creating an
+      // order — otherwise a bad upload (e.g. a truncated/corrupt file) silently
+      // creates an order that's doomed to fail generation minutes later.
+      try {
+        const metadata = await sharp(rawPhotoBuffer).metadata();
+        if (!metadata.width || !metadata.height) {
+          throw new Error('No valid image dimensions found');
+        }
+      } catch (imgErr) {
+        res.status(400).json({ error: 'The uploaded file is not a valid photo. Please choose a different image.' });
+        return;
+      }
+
+      if (req.file) {
+        const ext = req.file.mimetype.includes('webp') ? 'webp' : req.file.mimetype.includes('png') ? 'png' : 'jpg';
+        const stored = await storageService.saveImage(rawPhotoBuffer, 'uploads', ext);
+        photoUrl = stored.publicUrl;
+      } else {
+        const stored = await storageService.saveImage(rawPhotoBuffer, 'uploads', 'jpg');
+        photoUrl = stored.publicUrl;
       }
 
       // Validate sticker style
