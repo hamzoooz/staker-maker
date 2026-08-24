@@ -40,7 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-3 text-sm font-medium">
+        <div className="flex items-center gap-1.5 sm:gap-3 text-sm font-medium">
           
           {/* Admin VIP Badge if logged in */}
           {adminUser ? (
@@ -72,7 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Language Switch */}
           <button
             onClick={onToggleLang}
-            className="text-xs font-bold px-2 py-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer shadow-2xs"
+            className="text-xs font-bold px-1.5 py-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
             title="Switch Language"
           >
             {lang === 'en' ? 'العربية' : 'EN'}
@@ -82,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {!adminUser && (
             <button
               onClick={onOpenAdmin}
-              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              className="hidden sm:block p-1.5 sm:p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               title="Admin"
             >
               <Lock className="w-4 h-4" />
@@ -92,7 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Primary CTA */}
           <button
             onClick={onScrollToOrder}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-extrabold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 shadow-md shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer"
+            className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-extrabold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 shadow-md shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
           >
             <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>{lang === 'en' ? 'Create' : 'اصنع الآن'}</span>
