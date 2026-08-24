@@ -19,11 +19,11 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ lang }) => {
     },
     {
       number: '2',
-      title: lang === 'en' ? 'AI Generation & $2.99' : 'التوليد بالذكاء الاصطناعي',
+      title: lang === 'en' ? 'AI Generation & $1.19' : 'التوليد بالذكاء الاصطناعي',
       description:
         lang === 'en'
-          ? 'Quick, one-time payment. We generate your 12 unique sticker expressions.'
-          : 'دفع لمرة واحدة، ونقوم بإنشاء 12 تعبيراً مميزاً خاصاً بك.',
+          ? 'Quick, one-time payment. We generate your 4 unique sticker expressions.'
+          : 'دفع لمرة واحدة، ونقوم بإنشاء 4 تعبيرات مميزة خاصة بك.',
       icon: CreditCard,
       badge: lang === 'en' ? 'Step 2' : 'الخطوة ٢',
     },

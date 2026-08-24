@@ -323,7 +323,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="text-[10px] sm:text-xs font-bold text-slate-400 block mb-1">Completed Packs</span>
                   <div className="flex items-baseline space-x-1.5">
                     <span className="text-2xl sm:text-3xl font-black text-cyan-400">{stats.completedGenerations}</span>
-                    <span className="text-[10px] text-slate-400">({stats.completedGenerations * 12} stickers)</span>
+                    <span className="text-[10px] text-slate-400">({stats.completedGenerations * 4} stickers)</span>
                   </div>
                   <span className="text-[10px] text-emerald-400 mt-1.5 block flex items-center space-x-1">
                     <CheckCircle2 className="w-3 h-3 shrink-0" />
@@ -454,7 +454,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td className="p-3">
                             <span className="font-semibold text-slate-300 block">{ord.generationStatus}</span>
-                            <span className="text-[10px] text-slate-400">{ord.stickers?.length || 0}/12</span>
+                            <span className="text-[10px] text-slate-400">{ord.stickers?.length || 0}/4</span>
                           </td>
                           <td className="p-3 text-right space-x-1.5 shrink-0">
                             <button
@@ -763,7 +763,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 font-black text-xs sm:text-sm text-white shadow-lg flex items-center justify-center space-x-2 transition-all disabled:opacity-60 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>{isStudioGenerating ? 'Generating Free Pack...' : 'Generate 12 Stickers (Free Admin Mode)'}</span>
+                  <span>{isStudioGenerating ? 'Generating Free Pack...' : 'Generate 4 Stickers (Free Admin Mode)'}</span>
                 </button>
               </form>
             </div>

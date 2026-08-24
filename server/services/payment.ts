@@ -73,7 +73,7 @@ export class ZolnaPayPaymentService implements IPaymentService {
         body: JSON.stringify({
           amountCents,
           currency: (order.currency || 'USD').toLowerCase(),
-          description: `StickerAI - 12 Personalized WhatsApp Stickers (${order.id})`,
+          description: `StickerAI - 4 Personalized WhatsApp Stickers (${order.id})`,
           customerPhone: order.customerPhone,
           customerName: order.rawPhone || 'Customer',
           customerEmail: `order_${order.id}@stickerai.online`,

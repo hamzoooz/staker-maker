@@ -33,7 +33,7 @@ export class WhatsAppService implements IWhatsAppService {
     const baseUrl = process.env.APP_BASE_URL || process.env.APP_URL || 'http://localhost:3000';
     const packUrl = `${baseUrl}/order/${order.id}`;
     const prefilledText = encodeURIComponent(
-      `🎉 Hello! Your 12 custom WhatsApp Stickers from StickerMe AI are ready!\n\nView and download your sticker pack here: ${packUrl}\n\nThank you for using StickerMe AI!`
+      `🎉 Hello! Your 4 custom WhatsApp Stickers from StickerMe AI are ready!\n\nView and download your sticker pack here: ${packUrl}\n\nThank you for using StickerMe AI!`
     );
     const directWhatsAppUrl = `https://wa.me/${cleanPhone}?text=${prefilledText}`;
 
@@ -48,7 +48,7 @@ export class WhatsAppService implements IWhatsAppService {
         });
 
         // 1. Send welcome message
-        const welcomeMessage = `✨ *Your StickerMe AI Pack is Ready!* ✨\n\nWe've crafted 12 personalized WhatsApp stickers based on your selfie! 🎉\n\nTap below to view and download all your stickers:\n🔗 ${packUrl}\n\n*How to save on WhatsApp:*\n1. Open your pack link\n2. Tap "Save to WhatsApp" or tap any sticker to save to your WhatsApp Favorites ⭐`;
+        const welcomeMessage = `✨ *Your StickerMe AI Pack is Ready!* ✨\n\nWe've crafted 4 personalized WhatsApp stickers based on your selfie! 🎉\n\nTap below to view and download all your stickers:\n🔗 ${packUrl}\n\n*How to save on WhatsApp:*\n1. Open your pack link\n2. Tap "Save to WhatsApp" or tap any sticker to save to your WhatsApp Favorites ⭐`;
 
         const msgRes = await fetch(
           `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`,

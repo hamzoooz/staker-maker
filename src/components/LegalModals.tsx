@@ -44,7 +44,7 @@ export const LegalModals: React.FC<LegalModalProps> = ({ type, onClose }) => {
               </p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  <strong className="text-slate-900">Single Purpose Use:</strong> Your uploaded selfie is used solely to generate your 12 personalized WhatsApp stickers.
+                  <strong className="text-slate-900">Single Purpose Use:</strong> Your uploaded selfie is used solely to generate your 4 personalized WhatsApp stickers.
                 </li>
                 <li>
                   <strong className="text-slate-900">No Selling or Sharing:</strong> We never sell, rent, license, or transfer your photo or WhatsApp number to third-party advertisers or data brokers.
@@ -75,7 +75,7 @@ export const LegalModals: React.FC<LegalModalProps> = ({ type, onClose }) => {
                   <strong className="text-slate-900">Content Standards:</strong> Uploads containing nudity, violence, hate speech, or unlawful content are strictly prohibited and will be rejected automatically.
                 </li>
                 <li>
-                  <strong className="text-slate-900">Sticker Pack Delivery:</strong> Upon successful payment of $2.99 USD, 12 digital stickers will be generated and delivered via WhatsApp and on your private web status page.
+                  <strong className="text-slate-900">Sticker Pack Delivery:</strong> Upon successful payment of $1.19 USD, 4 digital stickers will be generated and delivered via WhatsApp and on your private web status page.
                 </li>
                 <li>
                   <strong className="text-slate-900">WhatsApp Compatibility:</strong> Delivered stickers conform to standard 512x512 transparent sticker specifications compatible with WhatsApp on iOS, Android, and Web.

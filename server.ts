@@ -105,7 +105,7 @@ async function startServer() {
         gatewayFee: feePrice,
         amount: totalPrice,
         currency: settings.currency || 'USD',
-        stickersCount: 12,
+        stickersCount: 4,
       },
       hasOpenAiKey: !!(settings.openaiApiKey || process.env.OPENAI_API_KEY),
       hasGeminiApiKey: !!(settings.geminiApiKey || process.env.GEMINI_API_KEY),
@@ -288,7 +288,7 @@ async function startServer() {
         photoUrl,
         style: validStyle,
         packageId: 'pack_12',
-        stickerCount: 12,
+        stickerCount: 4,
         basePrice: isAdminOrder ? 0 : basePrice,
         feePrice: isAdminOrder ? 0 : feePrice,
         price: isAdminOrder ? 0 : totalPrice,
@@ -575,7 +575,7 @@ async function startServer() {
     const baseUrl = process.env.APP_BASE_URL || process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     const packUrl = `${baseUrl}/order/${order.id}`;
     const prefilledText = encodeURIComponent(
-      `🎉 My 12 WhatsApp stickers from StickerAI are ready! Check them out: ${packUrl}`
+      `🎉 My 4 WhatsApp stickers from StickerAI are ready! Check them out: ${packUrl}`
     );
     const whatsappLink = cleanPhone ? `https://wa.me/${cleanPhone}?text=${prefilledText}` : `https://wa.me/?text=${prefilledText}`;
 

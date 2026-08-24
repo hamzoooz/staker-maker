@@ -88,7 +88,7 @@ export const Hero: React.FC<HeroProps> = ({ onStartOrder, lang }) => {
             {/* Pill Tag */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-slate-200/80 text-slate-800 text-xs font-bold shadow-xs">
               <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{lang === 'en' ? 'Turn 1 Selfie into 12 WhatsApp Stickers' : 'سيلفي واحد يتحول إلى 12 ملصق واتساب'}</span>
+              <span>{lang === 'en' ? 'Turn 1 Selfie into 4 WhatsApp Stickers' : 'سيلفي واحد يتحول إلى 4 ملصقات واتساب'}</span>
             </div>
 
             {/* Main Title */}
@@ -113,8 +113,8 @@ export const Hero: React.FC<HeroProps> = ({ onStartOrder, lang }) => {
             {/* Subtext */}
             <p className="text-slate-600 text-base sm:text-lg font-medium leading-relaxed max-w-lg mx-auto lg:mx-0">
               {lang === 'en'
-                ? 'Upload one selfie and get 12 personalized WhatsApp & Telegram stickers in seconds. Powered by AI.'
-                : 'ارفع صورة سيلفي واحدة واحصل على 12 ملصقاً ذكياً ومخصصاً لواتساب وتيليجرام في ثوانٍ بالذكاء الاصطناعي.'}
+                ? 'Upload one selfie and get 4 personalized WhatsApp & Telegram stickers in seconds. Powered by AI.'
+                : 'ارفع صورة سيلفي واحدة واحصل على 4 ملصقات ذكية ومخصصة لواتساب وتيليجرام في ثوانٍ بالذكاء الاصطناعي.'}
             </p>
 
             {/* Action CTA */}
@@ -124,14 +124,14 @@ export const Hero: React.FC<HeroProps> = ({ onStartOrder, lang }) => {
                 onClick={onStartOrder}
                 className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.98] text-white font-black text-base rounded-2xl shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 transition-all cursor-pointer"
               >
-                <span>{lang === 'en' ? 'Create My 12 Stickers Now' : 'اصنع حزمة ملصقاتي الآن'}</span>
+                <span>{lang === 'en' ? 'Create My 4 Stickers Now' : 'اصنع حزمة ملصقاتي الآن'}</span>
                 <ArrowRight className="w-5 h-5 opacity-90" />
               </button>
 
               <div className="flex items-center gap-2 text-slate-700 text-xs sm:text-sm font-bold">
                 <span className="inline-flex items-center text-emerald-600">
                   <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-500" />
-                  12 Stickers
+                  4 Stickers
                 </span>
                 <span>•</span>
                 <span>Direct WhatsApp Pack</span>

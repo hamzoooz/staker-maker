@@ -294,7 +294,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             <span>{lang === 'en' ? 'AI Sticker Studio' : 'استوديو الملصقات الذكية'}</span>
           </div>
           <h2 className="text-2xl sm:text-4xl font-black text-slate-950 tracking-tight">
-            {lang === 'en' ? 'Create Your 12 Stickers' : 'اصنع حزمة الـ 12 ملصقاً الخاصة بك'}
+            {lang === 'en' ? 'Create Your 4 Stickers' : 'اصنع حزمة الـ 4 ملصقات الخاصة بك'}
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 mt-1.5 font-medium">
             {lang === 'en'
@@ -612,7 +612,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   {lang === 'en' ? 'Personalized AI Stickers Pack' : 'حزمة الملصقات الذكية المخصصة'}
                 </h3>
                 <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                  {lang === 'en' ? '12 Unique Expressions • High Quality Transparent Stickers' : '١٢ تعبيراً فريداً مخصصاً • ملصقات شفافة بجودة عالية'}
+                  {lang === 'en' ? '4 Unique Expressions • High Quality Transparent Stickers' : '4 تعبيرات فريدة مخصصة • ملصقات شفافة بجودة عالية'}
                 </p>
               </div>
 
@@ -647,7 +647,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                 ) : isAdmin ? (
                   <>
                     <Zap className="w-5 h-5 text-amber-300" />
-                    <span>{lang === 'en' ? 'Generate 12 Stickers (Free Admin VIP)' : 'توليد ١٢ ملصقاً مخصصاً (مجاني للأدمن)'}</span>
+                    <span>{lang === 'en' ? 'Generate 4 Stickers (Free Admin VIP)' : 'توليد 4 ملصقات مخصصة (مجاني للأدمن)'}</span>
                     <ArrowRight className="w-5 h-5" />
                   </>
                 ) : (

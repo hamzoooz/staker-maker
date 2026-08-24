@@ -238,10 +238,10 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
   const isPaid = order.paymentStatus === 'paid';
   const isCompleted = order.generationStatus === 'completed';
   const completedStickersCount = stickers.filter((s) => s.generationStatus === 'completed').length;
-  const totalStickersForProgress = order.stickerCount || stickers.length || 12;
+  const totalStickersForProgress = order.stickerCount || stickers.length || 4;
   // Reflect actual sticker-by-sticker progress during generation instead of a flat
   // per-status bucket — otherwise the bar sits frozen for the several minutes it
-  // takes to generate 12 stickers, which reads as stuck even when it isn't.
+  // takes to generate all stickers, which reads as stuck even when it isn't.
   const progressPercent = isCompleted
     ? 100
     : order.generationStatus === 'packaging'
@@ -278,10 +278,10 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
     },
     {
       id: 'stickers',
-      title: lang === 'en' ? 'Generating 12 stickers' : 'توليد ١٢ ملصقاً',
+      title: lang === 'en' ? 'Generating 4 stickers' : 'توليد 4 ملصقات',
       isDone: isCompleted || completedStickersCount >= 1,
       isActive: order.generationStatus === 'generating_stickers' || order.generationStatus === 'processing_images',
-      note: order.generationProgress?.currentExpression || (lang === 'en' ? 'Creating 12 unique expressions' : 'إنشاء ١٢ تعبيراً فريداً مخصصاً'),
+      note: order.generationProgress?.currentExpression || (lang === 'en' ? 'Creating 4 unique expressions' : 'إنشاء 4 تعبيرات فريدة مخصصة'),
     },
     {
       id: 'packaging',
@@ -352,9 +352,9 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
 
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">
                 {isCompleted
-                  ? (lang === 'en' ? '12 AI Stickers Created Successfully!' : 'تم إنشاء الـ ١٢ ملصقاً بنجاح!')
+                  ? (lang === 'en' ? '4 AI Stickers Created Successfully!' : 'تم إنشاء الـ 4 ملصقات بنجاح!')
                   : isPaid
-                  ? (lang === 'en' ? '12 AI Stickers Generation in Progress' : 'جاري إنشاء الـ ١٢ ملصقاً بالذكاء الاصطناعي...')
+                  ? (lang === 'en' ? '4 AI Stickers Generation in Progress' : 'جاري إنشاء الـ 4 ملصقات بالذكاء الاصطناعي...')
                   : (lang === 'en' ? 'Complete Payment to Begin Generation' : 'أكمل الدفع لبدء إنشاء الملصقات')}
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 flex items-center space-x-2">
@@ -633,7 +633,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="text-xl font-extrabold text-slate-900">
-                      {lang === 'en' ? 'Your 12 Personalized Stickers' : 'حزمة الـ 12 ملصقاً الخاصة بك'}
+                      {lang === 'en' ? 'Your 4 Personalized Stickers' : 'حزمة الـ 4 ملصقات الخاصة بك'}
                     </h3>
                     <p className="text-xs text-slate-500">
                       {lang === 'en' 

@@ -65,7 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <div className="hidden lg:flex px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200/80 items-center gap-1.5 text-[11px] font-bold">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <span>12 Custom Stickers</span>
+              <span>4 Custom Stickers</span>
             </div>
           )}
 

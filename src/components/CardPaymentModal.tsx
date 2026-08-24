@@ -293,7 +293,7 @@ export const CardPaymentModal: React.FC<CardPaymentModalProps> = ({
             {/* Price Breakdown Banner */}
             <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
               <div className="flex items-center justify-between text-xs text-slate-600">
-                <span>{lang === 'en' ? '12 AI Stickers Pack' : 'حزمة 12 ملصق بالذكاء الاصطناعي'}</span>
+                <span>{lang === 'en' ? '4 AI Stickers Pack' : 'حزمة 4 ملصقات بالذكاء الاصطناعي'}</span>
                 <span className="font-mono font-bold text-slate-800">${order.basePrice || 0.99}</span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500">
