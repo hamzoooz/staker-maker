@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar.js';
 import { Hero } from './components/Hero.js';
 import { HowItWorks } from './components/HowItWorks.js';
-import { DemoShowcase } from './components/DemoShowcase.js';
 import { OrderForm } from './components/OrderForm.js';
 import { OrderStatusView } from './components/OrderStatusView.js';
 import { AdminDashboard } from './components/AdminDashboard.js';
@@ -135,15 +134,6 @@ export default function App() {
 
           {/* Minimal 3-Step How It Works */}
           <HowItWorks lang={lang} />
-
-          {/* 12 Expressions Demo Showcase */}
-          <DemoShowcase
-            lang={lang}
-            onSelectStyle={(styleId) => {
-              setSelectedStyle(styleId);
-              scrollToOrder();
-            }}
-          />
 
           {/* Main Order Form (Upload -> Style -> Phone Optional -> Checkout) */}
           <OrderForm

@@ -250,7 +250,7 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
 
   return (
     <div className="py-12 bg-slate-50 min-h-screen">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-8">
         
         {/* Top bar */}
         <div className="flex items-center justify-between">

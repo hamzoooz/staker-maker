@@ -5,6 +5,18 @@ import { ExpressionId, StickerStyleId } from '../../src/types/index.js';
 import { storageService } from './storage.js';
 import { db } from '../db.js';
 
+const DEFAULT_FETCH_TIMEOUT_MS = 45000;
+
+/**
+ * fetch() with a hard timeout — without this, a hung OpenAI request stalls the
+ * whole sticker generation job forever with no way to recover.
+ */
+function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 export interface GenerateStickerParams {
   orderId: string;
   photoUrl: string;
@@ -73,7 +85,7 @@ export class OpenAIService {
         return `Character in ${styleObj.name} style.`;
       }
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -156,7 +168,7 @@ Sticker specifications: pure solid white background with clean thick white die-c
       form.append('n', '1');
       form.append('size', '1024x1024');
 
-      const response = await fetch('https://api.openai.com/v1/images/edits', {
+      const response = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -185,7 +197,7 @@ Sticker specifications: pure solid white background with clean thick white die-c
         };
       } else if (imageUrl) {
         // Fallback: download from URL and convert to base64
-        const imgRes = await fetch(imageUrl);
+        const imgRes = await fetchWithTimeout(imageUrl);
         if (imgRes.ok) {
           const arrayBuffer = await imgRes.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -324,7 +336,7 @@ ABSOLUTELY NO TEXT OR TYPOGRAPHY OF ANY KIND.
 Do not generate letters, words, numbers, captions, speech bubbles, signs, labels, logos, watermarks, signatures, or pseudo-text.
 The image must contain zero readable or unreadable writing.`;
 
-      const response = await fetch('https://api.openai.com/v1/images/generations', {
+      const response = await fetchWithTimeout('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -359,7 +371,7 @@ The image must contain zero readable or unreadable writing.`;
         };
       } else if (imageUrl) {
         // Fallback: download from URL and convert to base64
-        const imgRes = await fetch(imageUrl);
+        const imgRes = await fetchWithTimeout(imageUrl);
         if (imgRes.ok) {
           const arrayBuffer = await imgRes.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -398,7 +410,7 @@ The image must contain zero readable or unreadable writing.`;
 
     try {
       const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

@@ -138,22 +138,6 @@ export const Hero: React.FC<HeroProps> = ({ onStartOrder, lang }) => {
               </div>
             </div>
 
-            {/* Trust Badges */}
-            <div className="pt-1 flex flex-wrap items-center justify-center lg:justify-start gap-y-2 gap-x-5 text-[11px] font-extrabold text-slate-500 uppercase tracking-tight">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span>{lang === 'en' ? 'Phone Optional' : 'الرقم اختياري'}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span>{lang === 'en' ? 'Instant Download' : 'تنزيل فوري'}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span>{lang === 'en' ? '256-Bit Encrypted' : 'دفع آمن ومشفر'}</span>
-              </div>
-            </div>
-
           </div>
 
           {/* Right Column: Visual Showcase Mobile-Friendly */}
@@ -188,11 +172,6 @@ export const Hero: React.FC<HeroProps> = ({ onStartOrder, lang }) => {
                     <span className="text-[10px] sm:text-xs font-black text-slate-900 tracking-tight">
                       {lang === 'en' ? stk.label : stk.labelAr}
                     </span>
-
-                    {/* Speech bubble accent */}
-                    <div className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-[8px] sm:text-[9px] font-bold shadow-xs">
-                      {stk.tag}
-                    </div>
                   </div>
                 ))}
               </div>

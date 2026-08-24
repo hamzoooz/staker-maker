@@ -63,6 +63,7 @@ class GeminiService {
     try {
       return new GoogleGenAI({
         apiKey,
+        httpOptions: { timeout: 45000 },
       });
     } catch (e) {
       console.error('Failed to initialize GoogleGenAI client:', e);

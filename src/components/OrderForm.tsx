@@ -286,7 +286,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
   return (
     <section id="order-section" className="py-10 sm:py-16 bg-slate-50 border-t border-slate-200">
-      <div className="max-w-4xl mx-auto px-3.5 sm:px-6">
+      <div className="max-w-6xl mx-auto px-3.5 sm:px-6">
         
         {/* Header */}
         <div className="text-center max-w-xl mx-auto mb-8 sm:mb-10">
