@@ -6,6 +6,18 @@ import { openAIService } from './openai.js';
 import { imageProcessor } from './imageProcessor.js';
 import { whatsAppService } from './whatsapp.js';
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Extracts a suggested wait time from a "please try again in Ns" style rate-limit message. */
+function parseRetryAfterSeconds(message: string, fallbackSeconds = 15): number {
+  const match = message.match(/try again in\s+([\d.]+)s/i);
+  if (match) {
+    const seconds = Math.ceil(parseFloat(match[1]));
+    return Math.min(Math.max(seconds, 1), 60) + 1; // small buffer, capped for sanity
+  }
+  return fallbackSeconds;
+}
+
 export class JobQueue {
   private activeJobs = new Set<string>();
 
@@ -111,12 +123,42 @@ export class JobQueue {
     const totalStickers = stickers.length;
     let completedCount = 0;
 
-    for (const sticker of stickers) {
+    const generateOnce = async (sticker: GeneratedSticker, actionPrompt: string) => {
+      if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
+        return openAIService.generateSticker({
+          orderId,
+          photoUrl: order.photoUrl,
+          styleId: order.style,
+          expressionId: sticker.expression,
+          expressionPrompt: actionPrompt,
+          expressionName: sticker.expressionName,
+          bubbleText: sticker.bubbleText,
+          canonicalCharacterPrompt: canonicalAnchor,
+        });
+      } else if (hasGemini) {
+        return geminiService.generateSticker({
+          orderId,
+          photoUrl: order.photoUrl,
+          styleId: order.style,
+          expressionId: sticker.expression,
+          expressionPrompt: actionPrompt,
+          expressionName: sticker.expressionName,
+          bubbleText: sticker.bubbleText,
+          canonicalCharacterPrompt: canonicalAnchor,
+        });
+      }
+      return { success: false, error: 'No AI provider configured.' } as any;
+    };
+
+    const processOneSticker = async (sticker: GeneratedSticker) => {
       if (sticker.generationStatus === 'completed' && !force) {
         completedCount++;
-        continue;
+        return;
       }
 
+      db.updateSticker(orderId, sticker.id, {
+        generationStatus: 'generating',
+      });
       db.updateOrder(orderId, {
         generationProgress: {
           total: totalStickers,
@@ -125,111 +167,19 @@ export class JobQueue {
         },
       });
 
-      db.updateSticker(orderId, sticker.id, {
-        generationStatus: 'generating',
-      });
+      const exprDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression);
+      const actionPrompt = exprDef ? exprDef.actionPrompt : sticker.expressionName;
 
-      try {
-        let genResult: any = { success: false };
-        const exprDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression);
-        const actionPrompt = exprDef ? exprDef.actionPrompt : sticker.expressionName;
-
-        if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
-          genResult = await openAIService.generateSticker({
-            orderId,
-            photoUrl: order.photoUrl,
-            styleId: order.style,
-            expressionId: sticker.expression,
-            expressionPrompt: actionPrompt,
-            expressionName: sticker.expressionName,
-            bubbleText: sticker.bubbleText,
-            canonicalCharacterPrompt: canonicalAnchor,
-          });
-        } else if (hasGemini) {
-          genResult = await geminiService.generateSticker({
-            orderId,
-            photoUrl: order.photoUrl,
-            styleId: order.style,
-            expressionId: sticker.expression,
-            expressionPrompt: actionPrompt,
-            expressionName: sticker.expressionName,
-            bubbleText: sticker.bubbleText,
-            canonicalCharacterPrompt: canonicalAnchor,
-          });
-        }
-
-        if (!genResult.success) {
-          throw new Error(genResult.error || 'Failed to generate sticker.');
-        }
-
-        // Process into transparent WebP/PNG with border and emoji badges
-        db.updateOrder(orderId, {
-          generationProgress: {
-            total: totalStickers,
-            completed: completedCount,
-            currentExpression: `Processing and optimizing ${sticker.expressionName}...`,
-          },
-        });
-
-        const processed = await imageProcessor.processSticker(genResult.rawBase64, {
-          expressionId: sticker.expression,
-          expressionName: sticker.expressionName,
-          styleId: order.style,
-          bubbleText: sticker.bubbleText,
-          isAIGenerated: true,
-        });
-
-        db.updateSticker(orderId, sticker.id, {
-          processedImageUrl: processed.publicUrl,
-          webpUrl: processed.webpUrl,
-          generationStatus: 'completed',
-          originalImageUrl: processed.publicUrl,
-        });
-
-        completedCount++;
-        db.updateOrder(orderId, {
-          generationProgress: {
-            total: totalStickers,
-            completed: completedCount,
-            currentExpression: `Finished ${sticker.expressionName}!`,
-          },
-        });
-
-      } catch (err: any) {
-        console.error(`Failed to generate sticker ${sticker.expression}:`, err);
-        // Retry mechanism: if it fails, retry once immediately
+      // The image-generation API enforces a hard per-minute rate limit
+      // (observed: 5 requests/min for gpt-image-2), so a rate-limited attempt
+      // isn't a real failure — wait out the limit and retry rather than
+      // giving up. Non-rate-limit errors still only get one quick retry.
+      const MAX_ATTEMPTS = 4;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         try {
-          console.log(`Retrying sticker ${sticker.expression} once...`);
-          let genResult: any = { success: false };
-          const exprDef = STICKER_EXPRESSIONS.find(e => e.id === sticker.expression);
-          const actionPrompt = exprDef ? exprDef.actionPrompt : sticker.expressionName;
-
-          if (aiProvider === 'openai' || (aiProvider === 'auto' && hasOpenAI)) {
-            genResult = await openAIService.generateSticker({
-              orderId,
-              photoUrl: order.photoUrl,
-              styleId: order.style,
-              expressionId: sticker.expression,
-              expressionPrompt: actionPrompt,
-              expressionName: sticker.expressionName,
-              bubbleText: sticker.bubbleText,
-              canonicalCharacterPrompt: canonicalAnchor,
-            });
-          } else if (hasGemini) {
-            genResult = await geminiService.generateSticker({
-              orderId,
-              photoUrl: order.photoUrl,
-              styleId: order.style,
-              expressionId: sticker.expression,
-              expressionPrompt: actionPrompt,
-              expressionName: sticker.expressionName,
-              bubbleText: sticker.bubbleText,
-              canonicalCharacterPrompt: canonicalAnchor,
-            });
-          }
-
+          const genResult: any = await generateOnce(sticker, actionPrompt);
           if (!genResult.success) {
-            throw new Error(genResult.error || 'Failed to generate sticker on retry.');
+            throw new Error(genResult.error || 'Failed to generate sticker.');
           }
 
           const processed = await imageProcessor.processSticker(genResult.rawBase64, {
@@ -248,13 +198,49 @@ export class JobQueue {
           });
 
           completedCount++;
-        } catch (retryErr: any) {
-          db.updateSticker(orderId, sticker.id, {
-            generationStatus: 'failed',
-            error: retryErr.message || 'Generation failed',
+          db.updateOrder(orderId, {
+            generationProgress: {
+              total: totalStickers,
+              completed: completedCount,
+              currentExpression: `Finished ${sticker.expressionName}!`,
+            },
           });
+          return;
+        } catch (err: any) {
+          const message: string = err.message || 'Generation failed';
+          console.error(`Failed to generate sticker ${sticker.expression} (attempt ${attempt + 1}):`, message);
+
+          const isRateLimit = /rate limit/i.test(message);
+          const isLastAttempt = attempt === MAX_ATTEMPTS - 1 || (!isRateLimit && attempt === 1);
+
+          if (isLastAttempt) {
+            db.updateSticker(orderId, sticker.id, {
+              generationStatus: 'failed',
+              error: message,
+            });
+            return;
+          }
+
+          if (isRateLimit) {
+            const waitSeconds = parseRetryAfterSeconds(message);
+            db.updateOrder(orderId, {
+              generationProgress: {
+                total: totalStickers,
+                completed: completedCount,
+                currentExpression: `Rate limited — retrying ${sticker.expressionName} in ${waitSeconds}s...`,
+              },
+            });
+            await sleep(waitSeconds * 1000);
+          }
         }
       }
+    };
+
+    // Sequential, not parallel: the AI provider enforces a low per-minute
+    // rate limit on image generation, so concurrent requests just burn
+    // through that budget faster and cause more rate-limit failures.
+    for (const sticker of stickers) {
+      await processOneSticker(sticker);
     }
 
     // Step 4: Packaging and final delivery

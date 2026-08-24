@@ -1,23 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  UploadCloud, 
-  Camera, 
-  Trash2, 
-  Check, 
-  Sparkles, 
-  ShieldCheck, 
-  ArrowRight, 
-  Phone, 
-  Search, 
-  AlertCircle, 
-  Lock, 
+import {
+  UploadCloud,
+  Camera,
+  Trash2,
+  Sparkles,
+  ShieldCheck,
+  ArrowRight,
+  Phone,
+  Search,
+  AlertCircle,
+  Lock,
   Loader2,
   RefreshCw,
   Zap,
   CreditCard,
   Image as ImageIcon
 } from 'lucide-react';
-import { POPULAR_COUNTRIES, STICKER_PACKAGES, STICKER_STYLES } from '../data/constants.js';
+import { POPULAR_COUNTRIES, STICKER_PACKAGES } from '../data/constants.js';
 import { CountryCodeItem, Order, StickerStyleId } from '../types/index.js';
 import { CardPaymentModal } from './CardPaymentModal.js';
 
@@ -299,8 +298,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 mt-1.5 font-medium">
             {lang === 'en'
-              ? 'Upload your photo, select a style, and receive your WhatsApp pack in seconds.'
-              : 'ارفع صورتك، اختر نمط الرسم، واحصل على حزمة ملصقاتك في ثوانٍ.'}
+              ? 'Upload your photo and receive your WhatsApp pack in seconds.'
+              : 'ارفع صورتك واحصل على حزمة ملصقاتك في ثوانٍ.'}
           </p>
         </div>
 
@@ -516,58 +515,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             )}
           </div>
 
-          {/* STEP 2: CHOOSE ART STYLE */}
-          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
-            <div className="flex items-center space-x-2.5 sm:space-x-3">
-              <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
-                2
-              </span>
-              <div>
-                <h3 className="text-sm sm:text-lg font-black text-slate-900">
-                  {lang === 'en' ? 'Select Art Style' : 'اختر نمط الرسم'}
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-500">
-                  {lang === 'en' ? 'How should your cartoon character look?' : 'كيف تريد أن تظهر شخصيتك في الستيكرات؟'}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-              {STICKER_STYLES.map((st) => (
-                <div
-                  key={st.id}
-                  onClick={() => onStyleChange(st.id)}
-                  className={`relative rounded-2xl p-3 sm:p-4 border-2 transition-all cursor-pointer flex flex-col justify-between active:scale-98 ${
-                    selectedStyle === st.id
-                      ? 'border-indigo-600 bg-indigo-50/60 shadow-md ring-2 ring-indigo-200'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <div>
-                    <span className="text-2xl sm:text-3xl mb-1.5 block">{st.sampleEmoji}</span>
-                    <h4 className="text-xs font-black text-slate-950">
-                      {lang === 'en' ? st.name : st.nameAr || st.name}
-                    </h4>
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 line-clamp-2">
-                      {lang === 'en' ? st.description : st.descriptionAr || st.description}
-                    </p>
-                  </div>
-                  {selectedStyle === st.id && (
-                    <div className="mt-2 w-4.5 h-4.5 rounded-full bg-indigo-600 text-white flex items-center justify-center self-end">
-                      <Check className="w-3 h-3" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* STEP 3: OPTIONAL WHATSAPP NUMBER */}
+          {/* STEP 2: OPTIONAL WHATSAPP NUMBER */}
           <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-xs border border-slate-200/90 space-y-4 sm:space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2.5 sm:space-x-3">
                 <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md">
-                  3
+                  2
                 </span>
                 <div>
                   <h3 className="text-sm sm:text-lg font-black text-slate-900">
@@ -648,7 +601,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             )}
           </div>
 
-          {/* STEP 4: PACKAGE SUMMARY & CHECKOUT */}
+          {/* STEP 3: PACKAGE SUMMARY & CHECKOUT */}
           <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-8 shadow-2xl space-y-5 sm:space-y-6 border border-slate-800">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
               <div>

@@ -201,7 +201,21 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
   const isPaid = order.paymentStatus === 'paid';
   const isCompleted = order.generationStatus === 'completed';
   const completedStickersCount = stickers.filter((s) => s.generationStatus === 'completed').length;
-  const progressPercent = isCompleted ? 100 : order.generationStatus === 'processing_images' || order.generationStatus === 'packaging' ? 80 : order.generationStatus === 'generating_stickers' ? 40 : order.generationStatus === 'creating_character' ? 20 : order.generationStatus === 'analyzing_photo' ? 10 : 0;
+  const totalStickersForProgress = order.stickerCount || stickers.length || 12;
+  // Reflect actual sticker-by-sticker progress during generation instead of a flat
+  // per-status bucket — otherwise the bar sits frozen for the several minutes it
+  // takes to generate 12 stickers, which reads as stuck even when it isn't.
+  const progressPercent = isCompleted
+    ? 100
+    : order.generationStatus === 'packaging'
+    ? 95
+    : order.generationStatus === 'generating_stickers' || order.generationStatus === 'processing_images'
+    ? 15 + Math.round((completedStickersCount / totalStickersForProgress) * 80)
+    : order.generationStatus === 'creating_character'
+    ? 10
+    : order.generationStatus === 'analyzing_photo'
+    ? 5
+    : 0;
 
   const stages = [
     {
@@ -403,6 +417,13 @@ export const OrderStatusView: React.FC<OrderStatusViewProps> = ({
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
+              {!isCompleted && (
+                <p className="text-[11px] text-slate-400 pt-0.5">
+                  {lang === 'en'
+                    ? 'Crafting each expression individually usually takes a few minutes — feel free to leave this page open.'
+                    : 'صنع كل تعبير يدويًا يستغرق عادة بضع دقائق — يمكنك ترك هذه الصفحة مفتوحة والعودة لاحقًا.'}
+                </p>
+              )}
             </div>
           )}
 
