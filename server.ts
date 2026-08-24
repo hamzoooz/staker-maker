@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-import sharp from 'sharp';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.js';
@@ -267,15 +266,22 @@ async function startServer() {
         return;
       }
 
-      // Reject anything that isn't an actual decodable image before creating an
-      // order — otherwise a bad upload (e.g. a truncated/corrupt file) silently
-      // creates an order that's doomed to fail generation minutes later.
-      try {
-        const metadata = await sharp(rawPhotoBuffer).metadata();
-        if (!metadata.width || !metadata.height) {
-          throw new Error('No valid image dimensions found');
-        }
-      } catch (imgErr) {
+      // Lightweight sanity check only — catches genuine garbage (e.g. a 41-byte
+      // non-image blob) without risking false rejections of real photos in
+      // less-common but valid formats/variants that a full sharp() decode can
+      // be too strict about. A photo that's structurally fine here but still
+      // fails at generation time is caught later by the "Generation Failed +
+      // Retry" UI instead of blocking the customer outright.
+      const isKnownImageSignature =
+        rawPhotoBuffer.length >= 500 && (
+          (rawPhotoBuffer[0] === 0xff && rawPhotoBuffer[1] === 0xd8 && rawPhotoBuffer[2] === 0xff) || // JPEG
+          (rawPhotoBuffer[0] === 0x89 && rawPhotoBuffer[1] === 0x50 && rawPhotoBuffer[2] === 0x4e && rawPhotoBuffer[3] === 0x47) || // PNG
+          (rawPhotoBuffer.slice(0, 4).toString('ascii') === 'RIFF' && rawPhotoBuffer.slice(8, 12).toString('ascii') === 'WEBP') || // WebP
+          (rawPhotoBuffer.slice(4, 12).toString('ascii').includes('ftyp')) // HEIC/HEIF/AVIF (ISO base media container)
+        );
+
+      if (!isKnownImageSignature) {
+        console.warn(`Rejected order creation: unrecognized image data (${rawPhotoBuffer.length} bytes, first 16 bytes: ${rawPhotoBuffer.subarray(0, 16).toString('hex')})`);
         res.status(400).json({ error: 'The uploaded file is not a valid photo. Please choose a different image.' });
         return;
       }
